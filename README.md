@@ -15,3 +15,8 @@ cargo build --release
 ````
 sudo cp target/release/titan /usr/local/bin/
 ````
+
+- Usage
+````
+titan <argument> <url>
+````
