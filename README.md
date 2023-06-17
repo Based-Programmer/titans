@@ -13,5 +13,5 @@ cargo build --release
 
 - Then add it to yout $PATH
 ````
-sudo cp target/release/titan
+sudo cp target/release/titan /usr/local/bin/
 ````
