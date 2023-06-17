@@ -11,7 +11,7 @@ cd titan && \
 cargo build --release
 ````
 
-- Then add it to yout $PATH
+- Then add it to your $PATH
 ````
 sudo cp target/release/titan /usr/local/bin/
 ````
