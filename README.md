@@ -16,7 +16,22 @@ cargo build --release
 sudo cp target/release/titan /usr/local/bin/
 ````
 
-- Usage
+## Usage
 ````
 titan <argument> <url>
+````
+
+#### Example
+
+- Get data
+````
+titan 'https://dooood.com/d/0hdlp0641u82'
+````
+- Play
+````
+titan -p 'https://www.youtube.com/watch?v=luOgEhLE2sg'
+````
+- More at help
+````
+titan -h
 ````
