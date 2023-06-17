@@ -7,6 +7,6 @@ Blazingly fast scraper
 - First of all install rust then
 ````
 git clone 'https://github.com/Based-Programmer/titan' && \
-cd Titan && \
+cd titan && \
 cargo build --release
 ````
