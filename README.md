@@ -1,4 +1,4 @@
-# titan
+# titans
 Blazingly fast scraper
 
 # Install
@@ -6,34 +6,34 @@ Blazingly fast scraper
 #### Linux/Mac
 - First of all install rust then
 ````
-git clone 'https://github.com/Based-Programmer/titan' && \
-cd titan && \
+git clone 'https://github.com/Based-Programmer/titans' && \
+cd titans && \
 cargo build --release
 ````
 
 - Then add it to your $PATH
 ````
-sudo cp target/release/titan /usr/local/bin/
+sudo cp target/release/titans /usr/local/bin/
 ````
 
 ## Usage
 ````
-titan <argument> <url>
+titans <argument> <url>
 ````
 
 #### Example
 
 - Get data
 ````
-titan 'https://dooood.com/d/0hdlp0641u82'
+titans 'https://dooood.com/d/0hdlp0641u82'
 ````
 - Play
 ````
-titan -p 'https://www.youtube.com/watch?v=luOgEhLE2sg'
+titans -p 'https://www.youtube.com/watch?v=luOgEhLE2sg'
 ````
 - More at help
 ````
-titan -h
+titans -h
 ````
 
 ## Optimal Dependencies
