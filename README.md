@@ -35,3 +35,8 @@ titan -p 'https://www.youtube.com/watch?v=luOgEhLE2sg'
 ````
 titan -h
 ````
+
+## Optimal Dependencies
+- mpv (Streaming video)
+- aria2 (for downloading)
+- ffmpeg (merging downloaded video & audio)
