@@ -47,7 +47,7 @@ pub async fn twatter(url: &str) -> Vid {
             .unwrap()
     });
 
-    vid.link = RE
+    vid.vid_link = RE
         .captures_iter(&resp)
         .max_by_key(|cap| cap[1].parse::<u32>().expect("Failed to parse bitrate"))
         .expect("Failed to get link")[2]

@@ -47,7 +47,7 @@ pub async fn youtube(url: &str) -> Vid {
     //println!("{}", resp);
 
     static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""itag": 22,\n.*"url": "(.*?)","#).unwrap());
-    vid.link = RE.captures(&resp).expect("Failed to get the video link")[1].to_string();
+    vid.vid_link = RE.captures(&resp).expect("Failed to get the video link")[1].to_string();
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)","#).unwrap());
     vid.title = RE_TITLE.captures(&resp).expect("Failed to get the title")[1].to_string();

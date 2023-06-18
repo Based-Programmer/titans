@@ -14,7 +14,7 @@ pub async fn substack(url: &str) -> Vid {
         Regex::new(r#"\\"publication_id\\":([0-9]*).*?\\"title\\":\\"([^"]*)\\".*?\\"video_upload_id\\":\\"([^"]*)\\""#).unwrap()
     });
     vid.title = RE.captures(&resp).expect("Failed to get title")[2].to_string();
-    vid.link = format!(
+    vid.vid_link = format!(
         "https://corbettreport.substack.com/api/v1/video/upload/{}/src?override_publication_id={}",
         &RE.captures(&resp).expect("Failed to get video_upload_id")[3],
         &RE.captures(&resp).expect("Failed to get publication_id")[1],

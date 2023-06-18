@@ -32,7 +32,7 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
 
         // isahc is blocked by cf
         let resp = get_html_reqwest(&link, &vid.user_agent, &vid.referrer).await;
-        vid.link = format!(
+        vid.vid_link = format!(
             "{}?{}&expiry={}",
             resp,
             token,
@@ -54,7 +54,7 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
         resp = get_html_isahc(&link, &vid.user_agent, &vid.referrer).await;
         static RE_LINK: Lazy<Regex> =
             Lazy::new(|| Regex::new(r#"(https://[^\.]*\.dood\.video/[^']*)"#).unwrap());
-        vid.link = RE_LINK.captures(&resp).unwrap()[1].to_string();
+        vid.vid_link = RE_LINK.captures(&resp).unwrap()[1].to_string();
     }
 
     vid

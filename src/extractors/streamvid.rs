@@ -17,7 +17,7 @@ pub async fn streamvid(url: &str, is_streaming_link: bool) -> Vid {
     static RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"([^|]*)\|?\|vvplay.*urlset\|([^|]*).*?([^|]*)?\|hls"#).unwrap());
 
-    vid.link = if is_streaming_link {
+    vid.vid_link = if is_streaming_link {
         format!(
             "https://{}.{}hls/{}{}/index-v1-a1.m3u8",
             &RE.captures(&resp).unwrap()[1],

@@ -22,7 +22,7 @@ pub async fn streamtape(url: &str, is_streaming_link: bool) -> Vid {
         .unwrap()
     });
 
-    vid.link = if is_streaming_link {
+    vid.vid_link = if is_streaming_link {
         format!(
             "http:/{}{}&stream=1",
             &RE.captures(&resp).expect("Failed to get the link")[2],
