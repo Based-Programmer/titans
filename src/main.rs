@@ -2,13 +2,14 @@ mod extractors;
 mod helpers;
 
 use crate::extractors::{
-    doodstream::doodstream, reddit::reddit, streamhub::streamhub, streamtape::streamtape,
-    streamvid::streamvid, substack::substack, twatter::twatter, youtube::youtube,
+    doodstream::doodstream, mp4upload::mp4upload, odysee::odysee, reddit::reddit, rumble::rumble,
+    streamhub::streamhub, streamtape::streamtape, streamvid::streamvid, substack::substack,
+    twatter::twatter, youtube::youtube,
 };
 
 use std::{
     env, fs,
-    process::{exit, Command},
+    process::{exit, Command, Stdio},
 };
 
 #[derive(Debug)]
@@ -46,6 +47,7 @@ impl Default for Vid {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vid = Vid::default();
     let mut best_video = String::new();
+    let mut best_audio = "";
 
     let mut todo = "";
     let mut is_streaming_link = true;
@@ -53,16 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "-h" | "--help" => {
-                println!(
-                    "\nUsage: titan <argument> <url>\n
-Arguments:                    
-\t-h, --help\t\t Display this help message
-\t-g, --get\t\t Get streaming link
-\t-p, --play\t\t Play video in mpv
-\t-d, --download\t\t Download video in aria2 
-\t-D, --dl_link\t\t Get download link
-\t-s, --stream_link\t Get streaming link"
-                );
+                help();
                 exit(0);
             }
             "-g" | "--get" => todo = "print link",
@@ -99,7 +92,8 @@ Arguments:
                 || a.starts_with("https://libreddit.")
                 || a.starts_with("https://teddit.") =>
             {
-                (vid, best_video) = reddit(&arg).await
+                (vid, best_video) = reddit(&arg).await;
+                best_audio = "DASH_audio.mp4";
             }
             a if a.starts_with("https://twitter.com/")
                 || a.starts_with("https://www.twitter.com/")
@@ -107,17 +101,43 @@ Arguments:
             {
                 vid = twatter(&arg).await
             }
+            a if a.starts_with("https://odysee.com/")
+                || a.starts_with("https://lbry.")
+                || a.starts_with("https://librarian.") =>
+            {
+                vid = odysee(&arg).await
+            }
+            a if a.starts_with("https://rumble.com/")
+                || a.starts_with("https://www.rumble.com/") =>
+            {
+                vid = rumble(&arg).await
+            }
             a if a.starts_with("https://streamvid.net") => {
                 vid = streamvid(&arg, is_streaming_link).await
             }
             a if a.starts_with("https://streamtape.") => {
                 vid = streamtape(&arg, is_streaming_link).await
             }
+            a if a.starts_with("https://mp4upload.com/")
+                || a.starts_with("https://www.mp4upload.com/") =>
+            {
+                vid = mp4upload(&arg).await
+            }
             _ => {
-                eprintln!("Invalid: {}", arg);
+                if arg.starts_with("https://") {
+                    eprintln!("Unsupported link: {}", arg);
+                } else {
+                    eprintln!("Invalid arg: {}", arg);
+                }
+                help();
                 exit(1);
             }
         }
+    }
+
+    if vid.vid_link.is_empty() {
+        println!("Failed to find the video link");
+        exit(1);
     }
 
     match todo {
@@ -131,16 +151,29 @@ Arguments:
                 format!("--audio-file={}", vid.audio_link)
             };
 
-            Command::new("mpv")
-                .arg(vid.vid_link)
-                .arg(audio_arg)
-                .arg("--no-terminal")
-                .arg("--force-window=immediate")
-                .arg(format!("--force-media-title={}", vid.title))
-                .arg(format!("--user-agent={}", vid.user_agent))
-                .arg(format!("--referrer={}", vid.referrer))
-                .spawn()
-                .expect("Failed to execute mpv");
+            if env::consts::OS == "android" {
+                Command::new("am")
+                    .arg("start")
+                    .args(["--user", "0"])
+                    .args(["-a", "android.intent.action.VIEW"])
+                    .args(["-d", &vid.vid_link])
+                    .args(["-n", "is.xyz.mpv/.MPVActivity"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("Failed to execute am command");
+            } else {
+                Command::new("mpv")
+                    .arg(vid.vid_link)
+                    .arg(audio_arg)
+                    .arg("--no-terminal")
+                    .arg("--force-window=immediate")
+                    .arg(format!("--force-media-title={}", vid.title))
+                    .arg(format!("--user-agent={}", vid.user_agent))
+                    .arg(format!("--referrer={}", vid.referrer))
+                    .spawn()
+                    .expect("Failed to execute mpv");
+            }
         }
         "download" => {
             println!("Downloading {}", vid.title);
@@ -184,23 +217,30 @@ Arguments:
                     .expect("Failed to execute aria2c")
                     .success()
                 {
-                    println!("Download Completed: {}", vid.title);
+                    println!(
+                        "\nDownload Completed: {}\n
+Merging video & audio files\n",
+                        vid.title
+                    );
+
+                    if Command::new("ffmpeg")
+                        .args(["-i", &best_video])
+                        .args(["-i", best_audio])
+                        .args(["-c", "copy"])
+                        .arg(format!("{}.mp4", vid.title))
+                        .status()
+                        .expect("Failed to merge")
+                        .success()
+                    {
+                        println!("\nVideo & audio merged successfully");
+                    } else {
+                        println!("\nVideo & audio merge failed");
+                    }
                 } else {
-                    println!("Download Failed: {}", vid.title);
+                    println!("\nDownload Failed: {}", vid.title);
                 }
-                if Command::new("ffmpeg")
-                    .args(["-i", &best_video])
-                    .args(["-i", "DASH_audio.mp4"])
-                    .args(["-c", "copy"])
-                    .arg(format!("{}.mp4", vid.title))
-                    .status()
-                    .expect("Failed to merge")
-                    .success()
-                {
-                    println!("Video & audio merged successfully");
-                } else {
-                    println!("Video & audio merge failed");
-                }
+
+                println!("\nDeleting video & audio files");
 
                 fs::remove_file("DASH_audio.mp4")
                     .expect("Failed to delete audio file after merging");
@@ -212,4 +252,17 @@ Arguments:
     }
 
     Ok(())
+}
+
+fn help() {
+    println!(
+        "\nUsage: titan <argument> <url>\n
+Arguments:                    
+\t-h, --help\t\t Display this help message
+\t-g, --get\t\t Get streaming link
+\t-p, --play\t\t Play video in mpv
+\t-d, --download\t\t Download video in aria2 
+\t-D, --dl_link\t\t Get download link
+\t-s, --stream_link\t Get streaming link"
+    );
 }

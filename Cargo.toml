@@ -1,10 +1,12 @@
 [package]
-name = "titan"
-version = "0.2.1"
-author = "BASED"
+name = "titans"
+authors = ["BASED"]
+license = "GPL-3.0"
+version = "0.2.6"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Blazingly Fast scraper"
+keywords = ["command-line", "scraper", "webscraper", "cli"]
+repository = "https://github.com/Based-Programmer/titans"
 
 [dependencies]
 tokio = { version = "1.28.2", features = ["full"] }

@@ -6,10 +6,15 @@ use std::time::SystemTime;
 pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
     const DOOD_LINK: &str = "https://dood.ws";
 
-    let (_, id) = url.rsplit_once('/').expect("Invalid link");
+    static RE_DOOD: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"https?://doo[^/]*/[e|d]/([^/?&]*)"#).unwrap());
 
     let mut vid = Vid {
-        referrer: format!("{}/e/{}", DOOD_LINK, id),
+        referrer: format!(
+            "{}/e/{}",
+            DOOD_LINK,
+            &RE_DOOD.captures(url).expect("Illegal url")[1]
+        ),
         ..Default::default()
     };
 
