@@ -76,3 +76,17 @@ titans -h
 - mpv (Streaming video)
 - aria2 (for downloading)
 - ffmpeg (merging downloaded video & audio)
+
+## Supported Sites
+
+- doodstream
+- mp4upload
+- odysee
+- reddit
+- rumble
+- streamhub
+- streamtape
+- streamvid
+- substack
+- twatter
+- youtube
