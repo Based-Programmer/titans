@@ -29,7 +29,7 @@ cargo install titans
 - Then move it to your $PATH
 
 ````sh
-sudo cp "$CARGO_HOME"/bin/titans
+sudo cp "$CARGO_HOME"/bin/titans /usr/local/bin/
 ````
 
 - Or better add $CARGO_HOME to your $PATH
