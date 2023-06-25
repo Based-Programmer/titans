@@ -2,9 +2,9 @@ mod extractors;
 mod helpers;
 
 use crate::extractors::{
-    doodstream::doodstream, mp4upload::mp4upload, odysee::odysee, reddit::reddit, rumble::rumble,
-    streamhub::streamhub, streamtape::streamtape, streamvid::streamvid, substack::substack,
-    twatter::twatter, youtube::youtube,
+    bitchute::bitchute, doodstream::doodstream, mp4upload::mp4upload, odysee::odysee,
+    reddit::reddit, rumble::rumble, streamhub::streamhub, streamtape::streamtape,
+    streamvid::streamvid, substack::substack, twatter::twatter, youtube::youtube,
 };
 
 use std::{
@@ -44,7 +44,7 @@ impl Default for Vid {
 }*/
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
     let mut vid = Vid::default();
     let mut best_video = String::new();
     let mut best_audio = "";
@@ -107,6 +107,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 vid = odysee(&arg).await
             }
+            a if a.starts_with("https://www.bitchute.com/")
+                || a.starts_with("https://bitchute.com/") =>
+            {
+                vid = bitchute(&arg).await
+            }
             a if a.starts_with("https://rumble.com/")
                 || a.starts_with("https://www.rumble.com/") =>
             {
@@ -135,21 +140,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if vid.vid_link.is_empty() {
-        println!("Failed to find the video link");
-        exit(1);
-    }
-
     match todo {
-        "print link" => println!("{}", vid.vid_link),
+        "print link" => {
+            if vid.audio_link.is_empty() {
+                println!("{}", vid.vid_link);
+            } else {
+                println!("{}\n{}", vid.vid_link, vid.audio_link);
+            }
+        }
         "play" => {
             println!("Playing {}", vid.title);
 
-            let audio_arg = if vid.audio_link.is_empty() {
-                String::new()
-            } else {
-                format!("--audio-file={}", vid.audio_link)
-            };
+            let mut audio_arg = String::new();
+
+            if vid.vid_link.is_empty() {
+                vid.vid_link = vid.audio_link;
+            } else if !vid.audio_link.is_empty() {
+                audio_arg = format!("--audio-file={}", vid.audio_link)
+            }
 
             if env::consts::OS == "android" {
                 Command::new("am")
@@ -250,8 +258,6 @@ Merging video & audio files\n",
         }
         _ => println!("{:#?}", vid),
     }
-
-    Ok(())
 }
 
 fn help() {
@@ -263,6 +269,8 @@ Arguments:
 \t-p, --play\t\t Play video in mpv
 \t-d, --download\t\t Download video in aria2 
 \t-D, --dl_link\t\t Get download link
-\t-s, --stream_link\t Get streaming link"
+\t-s, --stream_link\t Get streaming link
+
+Supported Extractors : bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube"
     );
 }

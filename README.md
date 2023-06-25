@@ -79,6 +79,7 @@ titans -h
 
 ## Supported Sites
 
+- bitchute
 - doodstream
 - mp4upload
 - odysee

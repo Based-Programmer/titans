@@ -1,3 +1,4 @@
+pub mod bitchute;
 pub mod doodstream;
 pub mod mp4upload;
 pub mod odysee;
