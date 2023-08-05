@@ -6,22 +6,17 @@ use std::time::SystemTime;
 pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
     const DOOD_LINK: &str = "https://dood.ws";
 
-    static RE_DOOD: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r#"https?://doo[^/]*/[e|d]/([^/?&]*)"#).unwrap());
+    let path = url.rsplit_once('/').unwrap().1;
 
     let mut vid = Vid {
-        referrer: format!(
-            "{}/e/{}",
-            DOOD_LINK,
-            &RE_DOOD.captures(url).expect("Illegal url")[1]
-        ),
+        referrer: format!("{}/e/{}", DOOD_LINK, path),
         ..Default::default()
     };
 
     let mut resp = get_html_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
 
     static RE_TITLE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r#"<title>(.*) - DoodStream</title>"#).unwrap());
+        Lazy::new(|| Regex::new(r#"<title>(.*?) - DoodStream</title>"#).unwrap());
     vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1].to_string();
 
     let link;
@@ -39,8 +34,7 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
             &RE_MD5.captures(&resp).expect("Failed to get pass md5")[1]
         );
 
-        // isahc is blocked by cf
-        let resp = get_html_curl(&link, &vid.user_agent, &vid.referrer).await;
+        let resp = get_html_isahc(&link, &vid.user_agent, &vid.referrer).await;
         vid.vid_link = format!(
             "{}?{}&expiry={}",
             resp,

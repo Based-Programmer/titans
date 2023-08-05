@@ -12,26 +12,32 @@ pub async fn streamvid(url: &str, is_streaming_link: bool) -> Vid {
 
     let resp = get_html_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
 
-    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new("<title>(.*?)</title>").unwrap());
+    static RE_TITLE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r#"<h6 class="card-title">(.*?)</h6>"#).unwrap());
     vid.title = RE_TITLE.captures(&resp).unwrap()[1].to_string();
-    static RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r#"([^|]*)\|?\|vvplay.*urlset\|([^|]*).*?([^|]*)?\|hls"#).unwrap());
+
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r#"adb\|html\|embed\|if(\|?\|?(false\|?)?(on)?\|?)?\|([^|]*)\|?.*urlset\|([^|]*).*?([^|]*)?\|hls"#,
+        )
+        .unwrap()
+    });
 
     vid.vid_link = if is_streaming_link {
         format!(
             "https://{}.{}hls/{}{}/index-v1-a1.m3u8",
-            &RE.captures(&resp).unwrap()[1],
+            &RE.captures(&resp).unwrap()[4],
             BASE_URL,
-            &RE.captures(&resp).unwrap()[3],
-            &RE.captures(&resp).unwrap()[2]
+            &RE.captures(&resp).unwrap()[6],
+            &RE.captures(&resp).unwrap()[5]
         )
     } else {
         format!(
             "https://{}.{}{}{}/",
-            &RE.captures(&resp).unwrap()[1],
+            &RE.captures(&resp).unwrap()[4],
             BASE_URL,
-            &RE.captures(&resp).unwrap()[3],
-            &RE.captures(&resp).unwrap()[2]
+            &RE.captures(&resp).unwrap()[6],
+            &RE.captures(&resp).unwrap()[5]
         )
     };
 

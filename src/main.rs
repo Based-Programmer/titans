@@ -8,49 +8,48 @@ use crate::extractors::{
 };
 
 use std::{
-    env, fs,
-    process::{exit, Command, Stdio},
+    env,
+    process::{exit, Stdio},
 };
+
+use tokio::{fs, process::Command};
 
 #[derive(Debug)]
 pub struct Vid {
-    title: String,
     user_agent: String,
-    vid_link: String,
-    audio_link: String,
     referrer: String,
+    title: String,
+    vid_link: String,
+    vid_codec: String,
+    resolution: String,
+    audio_link: String,
+    audio_codec: String,
 }
 
 impl Default for Vid {
     fn default() -> Self {
         Self {
-            title: String::new(),
             user_agent: String::from("uwu"),
-            vid_link: String::new(),
-            audio_link: String::new(),
             referrer: String::new(),
+            title: String::new(),
+            vid_link: String::new(),
+            vid_codec: String::new(),
+            resolution: String::new(),
+            audio_link: String::new(),
+            audio_codec: String::new(),
         }
     }
 }
 
-/*impl std::fmt::Display for Vid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "title: {}\nuser_agent: {}\nlink: {}\nreferrer: {}",
-            self.title, self.user_agent, self.link, self.referrer
-        )
-    }
-}*/
-
 #[tokio::main]
 async fn main() {
     let mut vid = Vid::default();
-    let mut best_video = String::new();
-    let mut best_audio = "";
-
     let mut todo = "";
     let mut is_streaming_link = true;
+    let mut is_dash = true;
+    let mut resolution = String::from("best");
+    let mut vid_codec = String::from("avc");
+    let mut audio_codec = String::from("opus");
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
@@ -59,13 +58,37 @@ async fn main() {
                 exit(0);
             }
             "-g" | "--get" => todo = "print link",
-            "-p" | "--play" => todo = "play",
+            "-p" | "--play" => {
+                todo = "play";
+                resolution = String::from("720");
+                is_dash = false;
+            }
+            "-pa" | "--play-audio" => todo = "play audio",
             "-d" | "--download" => {
                 todo = "download";
                 is_streaming_link = false;
             }
             "-D" | "--dl_link" => is_streaming_link = false,
             "-s" | "--stream_link" => is_streaming_link = true,
+            "-c" | "--combined" => {
+                is_dash = false;
+                resolution = String::from("720");
+            }
+            "-b" | "--best" => resolution = String::from("best"),
+            a if a.starts_with("-r=") || a.starts_with("--resolution=") => {
+                resolution = arg
+                    .split_once('=')
+                    .unwrap()
+                    .1
+                    .trim_end_matches('p')
+                    .to_string();
+            }
+            a if a.starts_with("-vc=") || a.starts_with("--vid-codec=") => {
+                vid_codec = arg.split_once('=').unwrap().1.to_string();
+            }
+            a if a.starts_with("-ac=") || a.starts_with("--audio-codec=") => {
+                audio_codec = arg.split_once('=').unwrap().1.to_string();
+            }
             a if a.starts_with("https://doodstream.com/")
                 || a.starts_with("https://www.doodstream.com/")
                 || a.starts_with("https://dood.")
@@ -83,7 +106,7 @@ async fn main() {
                 || a.starts_with("https://piped.")
                 || a.starts_with("https://invidious.") =>
             {
-                vid = youtube(&arg).await
+                vid = youtube(&arg, &resolution, &vid_codec, &audio_codec, is_dash).await
             }
             a if a.starts_with("https://www.reddit.com/")
                 || a.starts_with("https://old.reddit.com/")
@@ -92,8 +115,7 @@ async fn main() {
                 || a.starts_with("https://libreddit.")
                 || a.starts_with("https://teddit.") =>
             {
-                (vid, best_video) = reddit(&arg).await;
-                best_audio = "DASH_audio.mp4";
+                vid = reddit(&arg).await;
             }
             a if a.starts_with("https://twitter.com/")
                 || a.starts_with("https://www.twitter.com/")
@@ -107,9 +129,10 @@ async fn main() {
             {
                 vid = odysee(&arg).await
             }
-            a if a.starts_with("https://www.bitchute.com/")
-                || a.starts_with("https://bitchute.com/") =>
+            a if a.starts_with("https://www.bitchute.com/video/")
+                || a.starts_with("https://bitchute.com/video/") =>
             {
+                let arg = arg.replace("https://bitchute", "https://www.bitchute");
                 vid = bitchute(&arg).await
             }
             a if a.starts_with("https://rumble.com/")
@@ -183,77 +206,72 @@ async fn main() {
                     .expect("Failed to execute mpv");
             }
         }
-        "download" => {
-            println!("Downloading {}", vid.title);
+        "play audio" => {
+            println!("Playing {}\n", vid.title);
 
             if vid.audio_link.is_empty() {
-                if Command::new("aria2c")
-                    .arg(vid.vid_link)
-                    .arg("--max-connection-per-server=16")
-                    .arg("--max-concurrent-downloads=16")
-                    .arg("--split=16")
-                    .arg("--min-split-size=1M")
-                    .arg("--check-certificate=false")
-                    .arg("--summary-interval=0")
-                    .arg("--download-result=hide")
-                    .arg(format!("--out={}.mp4", vid.title))
-                    .arg(format!("--user-agent={}", vid.user_agent))
-                    .arg(format!("--referer={}", vid.referrer))
+                eprintln!("No audio link found");
+                exit(1);
+            }
+
+            if env::consts::OS == "android" {
+                Command::new("am")
+                    .arg("start")
+                    .args(["--user", "0"])
+                    .args(["-a", "android.intent.action.VIEW"])
+                    .args(["-d", &vid.audio_link])
+                    .args(["-n", "is.xyz.mpv/.MPVActivity"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .expect("Failed to execute am command");
+            } else if !Command::new("mpv")
+                .arg(&vid.audio_link)
+                .arg("--speed=1")
+                .arg(format!("--force-media-title={}", vid.title))
+                .arg(format!("--user-agent={}", vid.user_agent))
+                .arg(format!("--referrer={}", vid.referrer))
+                .status()
+                .await
+                .expect("Failed to execute mpv")
+                .success()
+            {
+                eprintln!("Failed to play audio source: {}", vid.audio_link);
+            }
+        }
+        "download" => {
+            if !vid.audio_link.is_empty() {
+                download(&vid, &vid.vid_link, " video", "mp4").await;
+
+                download(&vid, &vid.audio_link, " audio", "mp3").await;
+
+                let vid_title = format!("{} video.{}", vid.title, "mp4");
+                let audio_title = format!("{} audio.{}", vid.title, "mp3");
+
+                if Command::new("ffmpeg")
+                    .args(["-i", &vid_title])
+                    .args(["-i", &audio_title])
+                    .args(["-c", "copy"])
+                    .arg(format!("{}.mp4", vid.title))
                     .status()
-                    .expect("Failed to execute aria2c")
+                    .await
+                    .expect("Failed to execute ffmpeg")
                     .success()
                 {
-                    println!("Download Completed: {}", vid.title);
+                    println!("\nVideo & audio merged successfully");
+
+                    fs::remove_file(vid_title)
+                        .await
+                        .unwrap_or_else(|_| eprintln!("Failed to remove downloaded video"));
+
+                    fs::remove_file(audio_title)
+                        .await
+                        .unwrap_or_else(|_| eprintln!("Failed to remove downloaded audio"));
                 } else {
-                    println!("Download Failed: {}", vid.title);
+                    eprintln!("\nVideo & audio merge failed");
                 }
             } else {
-                if Command::new("aria2c")
-                    .arg(vid.vid_link)
-                    .arg(vid.audio_link)
-                    .arg("--force-sequential")
-                    .arg("--max-connection-per-server=16")
-                    .arg("--max-concurrent-downloads=16")
-                    .arg("--split=16")
-                    .arg("--min-split-size=1M")
-                    .arg("--check-certificate=false")
-                    .arg("--summary-interval=0")
-                    .arg("--download-result=hide")
-                    .arg(format!("--user-agent={}", vid.user_agent))
-                    .arg(format!("--referer={}", vid.referrer))
-                    .status()
-                    .expect("Failed to execute aria2c")
-                    .success()
-                {
-                    println!(
-                        "\nDownload Completed: {}\n
-Merging video & audio files\n",
-                        vid.title
-                    );
-
-                    if Command::new("ffmpeg")
-                        .args(["-i", &best_video])
-                        .args(["-i", best_audio])
-                        .args(["-c", "copy"])
-                        .arg(format!("{}.mp4", vid.title))
-                        .status()
-                        .expect("Failed to merge")
-                        .success()
-                    {
-                        println!("\nVideo & audio merged successfully");
-                    } else {
-                        println!("\nVideo & audio merge failed");
-                    }
-                } else {
-                    println!("\nDownload Failed: {}", vid.title);
-                }
-
-                println!("\nDeleting video & audio files");
-
-                fs::remove_file("DASH_audio.mp4")
-                    .expect("Failed to delete audio file after merging");
-
-                fs::remove_file(best_video).expect("Failed to delete video file after merging");
+                download(&vid, &vid.vid_link, "", "mp4").await;
             }
         }
         _ => println!("{:#?}", vid),
@@ -270,7 +288,38 @@ Arguments:
 \t-d, --download\t\t Download video in aria2 
 \t-D, --dl_link\t\t Get download link
 \t-s, --stream_link\t Get streaming link
+\t-r=, --resolution=720p\t Select resolution
+\t-vc=, --video-codec=vp9\t Select video codec (default: avc)
+\t-ac=, --audio-codec=mp4a Select audio codec (default: opus)
+\t-c, --combined\t\t Combined video & audio        
+\t-b, --best\t\t best resolution while playing (use it after -p flag)        
 
 Supported Extractors : bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube"
     );
+}
+
+async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
+    println!("\nDownloading{}: {}", types, vid.title);
+
+    if Command::new("aria2c")
+        .arg(link)
+        .arg("--max-connection-per-server=16")
+        .arg("--max-concurrent-downloads=16")
+        .arg("--split=16")
+        .arg("--min-split-size=1M")
+        .arg("--check-certificate=false")
+        .arg("--summary-interval=0")
+        .arg("--download-result=hide")
+        .arg(format!("--out={}{}.{}", vid.title, types, extension))
+        .arg(format!("--user-agent={}", vid.user_agent))
+        .arg(format!("--referer={}", vid.referrer))
+        .status()
+        .await
+        .expect("Failed to execute mpv")
+        .success()
+    {
+        println!("\nDownloaded successfully");
+    } else {
+        eprintln!("\nDownload Failed");
+    }
 }

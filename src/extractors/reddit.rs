@@ -2,7 +2,7 @@ use crate::{helpers::reqwests::get_html_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn reddit(url: &str) -> (Vid, String) {
+pub async fn reddit(url: &str) -> Vid {
     static RE_LINK: Lazy<Regex> = Lazy::new(|| {
         Regex::new(r#"https://((libreddit|teddit)\.[^/]*|(www\.|old\.)?reddit\.com|redd\.it)(.*)"#)
             .unwrap()
@@ -42,5 +42,5 @@ pub async fn reddit(url: &str) -> (Vid, String) {
 
     vid.referrer = vid.referrer.replace(".json", "/");
 
-    (vid, best_video.to_string())
+    vid
 }

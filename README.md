@@ -6,7 +6,9 @@ Blazingly fast scraper
 
 #### Linux/Mac
 
-- First of all install rust then
+- Get the binary from the [release page](https://github.com/Based-Programmer/titans/releases)
+
+- Build
 
 ````sh
 git clone 'https://github.com/Based-Programmer/titans' && \

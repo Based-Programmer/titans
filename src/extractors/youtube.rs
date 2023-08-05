@@ -1,14 +1,24 @@
 use crate::Vid;
 use isahc::{AsyncReadResponseExt, Request, RequestExt};
-use once_cell::sync::Lazy;
-use regex::Regex;
+use serde_json::{json, Value};
+use std::process::exit;
 
-pub async fn youtube(url: &str) -> Vid {
-    let (_, mut id) = url
+const RED: &str = "\u{1b}[31m";
+const RESET: &str = "\u{1b}[0m";
+
+pub async fn youtube(
+    url: &str,
+    resolution: &str,
+    vid_codec: &str,
+    audio_codec: &str,
+    is_dash: bool,
+) -> Vid {
+    let mut id = url
         .rsplit_once("v=")
-        .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"));
+        .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
+        .1;
 
-    id = id.split('&').next().unwrap_or_default();
+    id = id.split_once('&').unwrap_or((id, "")).0;
 
     let mut vid = Vid {
         user_agent: String::from("com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip"),
@@ -16,26 +26,22 @@ pub async fn youtube(url: &str) -> Vid {
         ..Default::default()
     };
 
-    let json = format!(
-        r#"{{
-  "context": {{
-    "client": {{
-      "clientName": "ANDROID",
-      "clientVersion": "17.31.35",
-      "userAgent": "{}",
-    }}
-  }},
-  "videoId": "{}",
-  "params": "8AEB",
-}}"#,
-        vid.user_agent, id
-    );
+    let json = json!({
+        "context": {
+            "client": {
+                "clientName": "ANDROID",
+                "clientVersion": "17.31.35",
+            }
+        },
+        "videoId": id,
+        "params": "8AEB",
+    });
 
     let resp = Request::post("https://www.youtube.com/youtubei/v1/player")
         .header("user-agent", &vid.user_agent)
-        .header("referrer", &vid.referrer)
+        .header("referer", &vid.referrer)
         .header("content-type", "application/json")
-        .body(json)
+        .body(json.to_string())
         .unwrap()
         .send_async()
         .await
@@ -44,12 +50,85 @@ pub async fn youtube(url: &str) -> Vid {
         .await
         .unwrap();
 
-    //println!("{}", resp);
+    let data: Value = serde_json::from_str(&resp).expect("Failed to derive json");
 
-    static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""itag": 22,\n.*"url": "(.*?)","#).unwrap());
-    vid.vid_link = RE.captures(&resp).expect("Failed to get the video link")[1].to_string();
+    if !is_dash && vid_codec == "avc" {
+        if let Some(formats) = data["streamingData"]["formats"].as_array() {
+            exit_if_empty(formats);
 
-    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)","#).unwrap());
-    vid.title = RE_TITLE.captures(&resp).expect("Failed to get the title")[1].to_string();
+            formats.iter().for_each(|format| {
+                let (codec, quality, url) = vid_data(format);
+
+                if quality == resolution {
+                    vid.vid_link = url;
+                    let (vid_codec, audio_codec) = codec
+                        .split_once(", ")
+                        .expect("Failed to find , which separates video & audio codec");
+                    vid.vid_codec = vid_codec.to_string();
+                    vid.audio_codec = audio_codec.to_string();
+                    vid.resolution = quality;
+                }
+            })
+        }
+    }
+
+    if vid.vid_link.is_empty() {
+        if let Some(formats) = data["streamingData"]["adaptiveFormats"].as_array() {
+            exit_if_empty(formats);
+
+            formats.iter().for_each(|format| {
+                let (codec, quality, url) = vid_data(format);
+
+                if codec.starts_with(vid_codec) && {
+                    quality == resolution || vid.vid_link.is_empty()
+                } {
+                    vid.vid_link = url;
+                    vid.vid_codec = codec;
+                    vid.resolution = quality;
+                } else if codec == audio_codec {
+                    vid.audio_link = url.to_string();
+                    vid.audio_codec = audio_codec.to_string();
+                }
+            });
+        }
+    }
+    vid.title = data["videoDetails"]["title"]
+        .as_str()
+        .expect("Failed to get title")
+        .to_string();
+
     vid
+}
+
+fn vid_data(format: &Value) -> (String, String, String) {
+    let codec = format["mimeType"]
+        .as_str()
+        .expect("Failed to get mimeType")
+        .split_once(r#"codecs=""#)
+        .expect("Failed to get codec")
+        .1
+        .trim_end_matches('"')
+        .to_string();
+
+    let quality = format["qualityLabel"]
+        .as_str()
+        .unwrap_or_default()
+        .split_once('p')
+        .unwrap_or_default()
+        .0
+        .to_string();
+
+    let url = format["url"]
+        .as_str()
+        .expect("Failed to get url")
+        .to_string();
+
+    (codec, quality, url)
+}
+
+fn exit_if_empty(formats: &Vec<serde_json::Value>) {
+    if formats.is_empty() {
+        eprintln!("{}No result{}", RED, RESET);
+        exit(1);
+    }
 }
