@@ -13,12 +13,13 @@ pub async fn youtube(
     audio_codec: &str,
     is_dash: bool,
 ) -> Vid {
-    let mut id = url
-        .rsplit_once("v=")
+    let id = url
+        .rsplit_once("/watch?v=")
         .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
-        .1;
-
-    id = id.split_once('&').unwrap_or((id, "")).0;
+        .1
+        .rsplit(|delimiter| delimiter == '?' || delimiter == '&')
+        .next_back()
+        .unwrap_or_default();
 
     let mut vid = Vid {
         user_agent: String::from("com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip"),
@@ -27,20 +28,42 @@ pub async fn youtube(
     };
 
     let json = json!({
-        "context": {
-            "client": {
-                "clientName": "ANDROID",
-                "clientVersion": "17.31.35",
-            }
+    "contentCheckOk": true,
+    "context": {
+        "client": {
+            "androidSdkVersion": 30,
+            "clientName": "ANDROID",
+            "clientVersion": "17.31.35",
+            "clientScreen": "WATCH",
+            "gl": "US",
+            "hl": "en",
+            "osName": "Android",
+            "osVersion": "11",
+            "platform": "MOBILE"
         },
-        "videoId": id,
-        "params": "8AEB",
+        "user": {
+            "lockedSafetyMode": false
+        },
+        "thirdParty": {
+            "embedUrl": "https://www.youtube.com/"
+        }
+    },
+    "videoId": id,
+    "playbackContext": {
+        "contentPlaybackContext": {
+            "signatureTimestamp": 19250
+        }
+    },
+    "racyCheckOk": true,
+    "contentCheckOk": true,
     });
 
-    let resp = Request::post("https://www.youtube.com/youtubei/v1/player")
+    let resp = Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
         .header("user-agent", &vid.user_agent)
         .header("referer", &vid.referrer)
         .header("content-type", "application/json")
+        .header("x-youtube-client-name", "ANDROID")
+        .header("x-youtube-client-version", "17.31.35")
         .body(json.to_string())
         .unwrap()
         .send_async()

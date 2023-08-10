@@ -34,7 +34,7 @@ pub async fn twatter(url: &str) -> Vid {
         Ok(token) => {
             let (last_time, gt) = token.split_once(' ').unwrap();
 
-            if current_time() - last_time.parse::<u64>().unwrap() <= 5400 {
+            if current_time() - last_time.parse::<u64>().unwrap() <= 3600 {
                 gt.to_string()
             } else {
                 fetch_guest_token(&vid).await

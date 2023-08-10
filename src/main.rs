@@ -315,7 +315,7 @@ async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
         .arg(format!("--referer={}", vid.referrer))
         .status()
         .await
-        .expect("Failed to execute mpv")
+        .expect("Failed to execute aria2c")
         .success()
     {
         println!("\nDownloaded successfully");
