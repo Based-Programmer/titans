@@ -1,9 +1,13 @@
-use isahc::{AsyncReadResponseExt, Request, RequestExt};
+use isahc::{
+    config::RedirectPolicy::Follow, prelude::Configurable, AsyncReadResponseExt, Request,
+    RequestExt,
+};
 
 pub async fn get_html_isahc(link: &str, user_agent: &str, referrer: &str) -> String {
     Request::get(link)
         .header("user-agent", user_agent)
         .header("referer", referrer)
+        .redirect_policy(Follow)
         .body(())
         .unwrap()
         .send_async()

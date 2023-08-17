@@ -92,6 +92,7 @@ async fn main() {
             a if a.starts_with("https://doodstream.com/")
                 || a.starts_with("https://www.doodstream.com/")
                 || a.starts_with("https://dood.")
+                || a.starts_with("https://doods.pro/")
                 || a.starts_with("https://dooood.com/") =>
             {
                 vid = doodstream(&arg, is_streaming_link).await

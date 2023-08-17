@@ -23,42 +23,43 @@ pub async fn youtube(
 
     let mut vid = Vid {
         user_agent: String::from("com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip"),
-        referrer: format!("https://www.youtube.com/watch?v={}", id),
+        referrer: format!("https://m.youtube.com/watch?v={}", id),
         ..Default::default()
     };
 
-    let json = json!({
-    "contentCheckOk": true,
-    "context": {
-        "client": {
-            "androidSdkVersion": 30,
-            "clientName": "ANDROID",
-            "clientVersion": "17.31.35",
-            "clientScreen": "WATCH",
-            "gl": "US",
-            "hl": "en",
-            "osName": "Android",
-            "osVersion": "11",
-            "platform": "MOBILE"
+    let resp = {
+        let json = json!({
+        "context": {
+            "client": {
+                "androidSdkVersion": 30,
+                "clientName": "ANDROID",
+                "clientVersion": "17.31.35",
+                "clientScreen": "WATCH",
+                "gl": "US",
+                "hl": "en",
+                "osName": "Android",
+                "osVersion": "11",
+                "platform": "MOBILE"
+            },
+            "user": {
+                "lockedSafetyMode": false
+            },
+            "thirdParty": {
+                "embedUrl": "https://www.youtube.com/"
+            }
         },
-        "user": {
-            "lockedSafetyMode": false
+        "videoId": id,
+        "playbackContext": {
+            "contentPlaybackContext": {
+                "signatureTimestamp": 19250
+            }
         },
-        "thirdParty": {
-            "embedUrl": "https://www.youtube.com/"
-        }
-    },
-    "videoId": id,
-    "playbackContext": {
-        "contentPlaybackContext": {
-            "signatureTimestamp": 19250
-        }
-    },
-    "racyCheckOk": true,
-    "contentCheckOk": true,
-    });
+        "racyCheckOk": true,
+        "contentCheckOk": true,
+        "params": "CgIQBg"
+        });
 
-    let resp = Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
+        Request::post("https://m.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
         .header("user-agent", &vid.user_agent)
         .header("referer", &vid.referrer)
         .header("content-type", "application/json")
@@ -71,7 +72,8 @@ pub async fn youtube(
         .unwrap()
         .text()
         .await
-        .unwrap();
+        .unwrap()
+    };
 
     let data: Value = serde_json::from_str(&resp).expect("Failed to derive json");
 
