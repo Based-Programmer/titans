@@ -1,7 +1,7 @@
 mod extractors;
 mod helpers;
 
-use crate::extractors::{
+use extractors::{
     bitchute::bitchute, doodstream::doodstream, mp4upload::mp4upload, odysee::odysee,
     reddit::reddit, rumble::rumble, streamhub::streamhub, streamtape::streamtape,
     streamvid::streamvid, substack::substack, twatter::twatter, youtube::youtube,
@@ -20,10 +20,10 @@ pub struct Vid {
     referrer: String,
     title: String,
     vid_link: String,
-    vid_codec: String,
-    resolution: String,
-    audio_link: String,
-    audio_codec: String,
+    vid_codec: Option<String>,
+    resolution: Option<String>,
+    audio_link: Option<String>,
+    audio_codec: Option<String>,
 }
 
 impl Default for Vid {
@@ -33,23 +33,78 @@ impl Default for Vid {
             referrer: String::new(),
             title: String::new(),
             vid_link: String::new(),
-            vid_codec: String::new(),
-            resolution: String::new(),
-            audio_link: String::new(),
-            audio_codec: String::new(),
+            vid_codec: Some(String::from("avc")),
+            resolution: None,
+            audio_link: None,
+            audio_codec: Some(String::from("opus")),
         }
     }
 }
+const RUMBLE_PREFIXES: [&str; 2] = ["https://rumble.com/", "https://www.rumble.com/"];
+const MP4UPLOAD_PREFIXES: [&str; 2] = ["https://mp4upload.com/", "https://www.mp4upload.com/"];
+const ODYSEE_PREFIXES: [&str; 3] = ["https://odysee.com/", "https://lbry.", "https://librarian."];
 
+const BITCHUTE_PREFIXES: [&str; 2] = [
+    "https://bitchute.com/video/",
+    "https://www.bitchute.com/video/",
+];
+
+const YT_PREFIXES: [&str; 14] = [
+    // YT
+    "https://youtube.com/",
+    "https://youtu.be/",
+    "https://www.youtube.com/",
+    "https://m.youtube.com/",
+    // Piped
+    "https://piped.",
+    "https://watch.leptons.xyz/",
+    "https://pi.ggtyler.dev",
+    // Invidious instances generally start with invidious, inv, etc
+    "https://invidious.",
+    "https://inv.",
+    "https://iv.",
+    "https://yt.",
+    "https://yewtu.be/",
+    "vid.puffyan.us",
+    "https://vid.priv.au/",
+];
+
+const REDDIT_PREFIXES: [&str; 6] = [
+    "https://www.reddit.com/",
+    "https://old.reddit.com/",
+    "https://reddit.com/",
+    "https://redd.it/",
+    "https://libreddit.",
+    "https://teddit.",
+];
+
+const TWATTER_PREFIXES: [&str; 6] = [
+    "https://x.com/",
+    "https://twitter.com/",
+    "https://nitter.",
+    "https://nt.",
+    "https://mobile.x.com/",
+    "https://mobile.twitter.com/",
+];
+
+const DOODSTREAM_PREDFIXES: [&str; 5] = [
+    "https://doodstream.com/",
+    "https://www.doodstream.com/",
+    "https://dood.",
+    "https://dooood.com/",
+    "https://doods.pro/",
+];
 #[tokio::main]
 async fn main() {
     let mut vid = Vid::default();
     let mut todo = "";
-    let mut is_streaming_link = true;
+    let mut audio_only = false;
+    let mut streaming_link = true;
     let mut is_dash = true;
     let mut resolution = String::from("best");
     let mut vid_codec = String::from("avc");
     let mut audio_codec = String::from("opus");
+    let mut speed = String::new();
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
@@ -57,25 +112,37 @@ async fn main() {
                 help();
                 exit(0);
             }
+            "-v" | "--version" => {
+                version();
+                exit(0);
+            }
             "-g" | "--get" => todo = "print link",
             "-p" | "--play" => {
                 todo = "play";
                 resolution = String::from("720");
+                if !audio_only {
+                    is_dash = false;
+                }
+            }
+            arg if starts(&["-sp=", "--speed="], arg).await => {
+                speed = format!("--speed={}", arg.split_once('=').unwrap().1);
+                todo = "play";
+                resolution = String::from("720");
                 is_dash = false;
             }
-            "-pa" | "--play-audio" => todo = "play audio",
+            "-a" | "--audio-only" => audio_only = true,
             "-d" | "--download" => {
                 todo = "download";
-                is_streaming_link = false;
+                streaming_link = false;
             }
-            "-D" | "--dl_link" => is_streaming_link = false,
-            "-s" | "--stream_link" => is_streaming_link = true,
+            "-D" | "--dl_link" => streaming_link = false,
+            "-s" | "--stream_link" => streaming_link = true,
             "-c" | "--combined" => {
                 is_dash = false;
                 resolution = String::from("720");
             }
             "-b" | "--best" => resolution = String::from("best"),
-            a if a.starts_with("-r=") || a.starts_with("--resolution=") => {
+            arg if starts(&["-r=", "--resolution="], arg).await => {
                 resolution = arg
                     .split_once('=')
                     .unwrap()
@@ -83,80 +150,39 @@ async fn main() {
                     .trim_end_matches('p')
                     .to_string();
             }
-            a if a.starts_with("-vc=") || a.starts_with("--vid-codec=") => {
+            arg if starts(&["-vc=", "--video-codec="], arg).await => {
                 vid_codec = arg.split_once('=').unwrap().1.to_string();
             }
-            a if a.starts_with("-ac=") || a.starts_with("--audio-codec=") => {
+            arg if starts(&["-ac=", "--audio-codec="], arg).await => {
                 audio_codec = arg.split_once('=').unwrap().1.to_string();
             }
-            a if a.starts_with("https://doodstream.com/")
-                || a.starts_with("https://www.doodstream.com/")
-                || a.starts_with("https://dood.")
-                || a.starts_with("https://doods.pro/")
-                || a.starts_with("https://dooood.com/") =>
-            {
-                vid = doodstream(&arg, is_streaming_link).await
+            arg if starts(&DOODSTREAM_PREDFIXES, arg).await => {
+                vid = doodstream(arg, streaming_link).await
             }
-            a if a.contains(".substack.com/p/") => vid = substack(&arg).await,
-            a if a.starts_with("https://streamhub.") => {
-                vid = streamhub(&arg, is_streaming_link).await
+            arg if arg.contains(".substack.com/p/") => vid = substack(arg).await,
+            arg if arg.starts_with("https://streamhub.") => {
+                vid = streamhub(arg, streaming_link).await
             }
-            a if a.starts_with("https://youtube.com/")
-                || a.starts_with("https://youtu.be/")
-                || a.starts_with("https://www.youtube.com/")
-                || a.starts_with("https://piped.")
-                || a.starts_with("https://invidious.") =>
-            {
-                vid = youtube(&arg, &resolution, &vid_codec, &audio_codec, is_dash).await
+            arg if starts(&YT_PREFIXES, arg).await => {
+                vid = youtube(arg, &resolution, &vid_codec, &audio_codec, is_dash).await
             }
-            a if a.starts_with("https://www.reddit.com/")
-                || a.starts_with("https://old.reddit.com/")
-                || a.starts_with("https://reddit.com/")
-                || a.starts_with("https://redd.it/")
-                || a.starts_with("https://libreddit.")
-                || a.starts_with("https://teddit.") =>
-            {
-                vid = reddit(&arg).await;
+            arg if starts(&REDDIT_PREFIXES, arg).await => vid = reddit(arg).await,
+            arg if starts(&TWATTER_PREFIXES, arg).await => vid = twatter(arg).await,
+            arg if starts(&ODYSEE_PREFIXES, arg).await => vid = odysee(arg).await,
+            arg if starts(&BITCHUTE_PREFIXES, arg).await => vid = bitchute(arg).await,
+            arg if starts(&RUMBLE_PREFIXES, arg).await => vid = rumble(arg).await,
+            arg if arg.starts_with("https://streamvid.net") => {
+                vid = streamvid(arg, streaming_link).await
             }
-            a if a.starts_with("https://twitter.com/")
-                || a.starts_with("https://www.twitter.com/")
-                || a.starts_with("https://nitter.") =>
-            {
-                vid = twatter(&arg).await
+            arg if arg.starts_with("https://streamtape.") => {
+                vid = streamtape(arg, streaming_link).await
             }
-            a if a.starts_with("https://odysee.com/")
-                || a.starts_with("https://lbry.")
-                || a.starts_with("https://librarian.") =>
-            {
-                vid = odysee(&arg).await
-            }
-            a if a.starts_with("https://www.bitchute.com/video/")
-                || a.starts_with("https://bitchute.com/video/") =>
-            {
-                let arg = arg.replace("https://bitchute", "https://www.bitchute");
-                vid = bitchute(&arg).await
-            }
-            a if a.starts_with("https://rumble.com/")
-                || a.starts_with("https://www.rumble.com/") =>
-            {
-                vid = rumble(&arg).await
-            }
-            a if a.starts_with("https://streamvid.net") => {
-                vid = streamvid(&arg, is_streaming_link).await
-            }
-            a if a.starts_with("https://streamtape.") => {
-                vid = streamtape(&arg, is_streaming_link).await
-            }
-            a if a.starts_with("https://mp4upload.com/")
-                || a.starts_with("https://www.mp4upload.com/") =>
-            {
-                vid = mp4upload(&arg).await
-            }
+            arg if starts(&MP4UPLOAD_PREFIXES, arg).await => vid = mp4upload(arg).await,
             _ => {
                 if arg.starts_with("https://") {
-                    eprintln!("Unsupported link: {}", arg);
+                    eprintln!("Unsupported link: {}\n", arg);
                 } else {
-                    eprintln!("Invalid arg: {}", arg);
+                    eprintln!("Invalid arg: {}\n", arg);
                 }
                 help();
                 exit(1);
@@ -166,10 +192,10 @@ async fn main() {
 
     match todo {
         "print link" => {
-            if vid.audio_link.is_empty() {
-                println!("{}", vid.vid_link);
+            if let Some(audio_link) = vid.audio_link {
+                println!("{}\n{}", vid.vid_link, audio_link);
             } else {
-                println!("{}\n{}", vid.vid_link, vid.audio_link);
+                println!("{}", vid.vid_link);
             }
         }
         "play" => {
@@ -177,10 +203,12 @@ async fn main() {
 
             let mut audio_arg = String::new();
 
-            if vid.vid_link.is_empty() {
-                vid.vid_link = vid.audio_link;
-            } else if !vid.audio_link.is_empty() {
-                audio_arg = format!("--audio-file={}", vid.audio_link)
+            if audio_only && vid.audio_link.is_some() {
+                vid.vid_link = vid.audio_link.unwrap();
+            } else if vid.vid_link.is_empty() {
+                vid.vid_link = vid.audio_link.expect("No vid or audio link found");
+            } else if let Some(audio_link) = vid.audio_link {
+                audio_arg = format!("--audio-file={}", audio_link)
             }
 
             if env::consts::OS == "android" {
@@ -194,10 +222,11 @@ async fn main() {
                     .stderr(Stdio::null())
                     .spawn()
                     .expect("Failed to execute am command");
-            } else {
+            } else if !audio_only {
                 Command::new("mpv")
                     .arg(vid.vid_link)
                     .arg(audio_arg)
+                    .arg(speed)
                     .arg("--no-terminal")
                     .arg("--force-window=immediate")
                     .arg(format!("--force-media-title={}", vid.title))
@@ -205,30 +234,10 @@ async fn main() {
                     .arg(format!("--referrer={}", vid.referrer))
                     .spawn()
                     .expect("Failed to execute mpv");
-            }
-        }
-        "play audio" => {
-            println!("Playing {}\n", vid.title);
-
-            if vid.audio_link.is_empty() {
-                eprintln!("No audio link found");
-                exit(1);
-            }
-
-            if env::consts::OS == "android" {
-                Command::new("am")
-                    .arg("start")
-                    .args(["--user", "0"])
-                    .args(["-a", "android.intent.action.VIEW"])
-                    .args(["-d", &vid.audio_link])
-                    .args(["-n", "is.xyz.mpv/.MPVActivity"])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .expect("Failed to execute am command");
             } else if !Command::new("mpv")
-                .arg(&vid.audio_link)
+                .arg(&vid.vid_link)
                 .arg("--speed=1")
+                .arg("--no-video")
                 .arg(format!("--force-media-title={}", vid.title))
                 .arg(format!("--user-agent={}", vid.user_agent))
                 .arg(format!("--referrer={}", vid.referrer))
@@ -237,42 +246,66 @@ async fn main() {
                 .expect("Failed to execute mpv")
                 .success()
             {
-                eprintln!("Failed to play audio source: {}", vid.audio_link);
+                eprintln!("Failed to play audio: {}", vid.vid_link);
             }
         }
         "download" => {
-            if !vid.audio_link.is_empty() {
-                download(&vid, &vid.vid_link, " video", "mp4").await;
+            let Some(vid_codec) = &vid.vid_codec else {
+                todo!()
+            };
 
-                download(&vid, &vid.audio_link, " audio", "mp3").await;
+            let vid_ext = if vid_codec.starts_with("vp9") {
+                "mkv"
+            } else {
+                "mp4"
+            };
 
-                let vid_title = format!("{} video.{}", vid.title, "mp4");
-                let audio_title = format!("{} audio.{}", vid.title, "mp3");
+            if let Some(audio_link) = &vid.audio_link {
+                let Some(audio_codec) = &vid.audio_codec else {
+                    todo!()
+                };
 
-                if Command::new("ffmpeg")
-                    .args(["-i", &vid_title])
-                    .args(["-i", &audio_title])
-                    .args(["-c", "copy"])
-                    .arg(format!("{}.mp4", vid.title))
-                    .status()
-                    .await
-                    .expect("Failed to execute ffmpeg")
-                    .success()
-                {
-                    println!("\nVideo & audio merged successfully");
-
-                    fs::remove_file(vid_title)
-                        .await
-                        .unwrap_or_else(|_| eprintln!("Failed to remove downloaded video"));
-
-                    fs::remove_file(audio_title)
-                        .await
-                        .unwrap_or_else(|_| eprintln!("Failed to remove downloaded audio"));
+                let audio_ext = if audio_codec.starts_with("opus") {
+                    "opus"
                 } else {
-                    eprintln!("\nVideo & audio merge failed");
+                    "mp3"
+                };
+
+                if audio_only {
+                    download(&vid, audio_link, " audio", audio_ext, false).await;
+                } else {
+                    download(&vid, &vid.vid_link, " video", vid_ext, true).await;
+
+                    download(&vid, audio_link, " audio", audio_ext, true).await;
+
+                    let vid_title = format!("{} video.{}", vid.title, vid_ext);
+                    let audio_title = format!("{} audio.{}", vid.title, audio_ext);
+
+                    if Command::new("ffmpeg")
+                        .args(["-i", &vid_title])
+                        .args(["-i", &audio_title])
+                        .args(["-c", "copy"])
+                        .arg(format!("{}.mp4", vid.title))
+                        .status()
+                        .await
+                        .expect("Failed to execute ffmpeg")
+                        .success()
+                    {
+                        println!("\nVideo & audio merged successfully");
+
+                        fs::remove_file(vid_title)
+                            .await
+                            .unwrap_or_else(|_| eprintln!("Failed to remove downloaded video"));
+
+                        fs::remove_file(audio_title)
+                            .await
+                            .unwrap_or_else(|_| eprintln!("Failed to remove downloaded audio"));
+                    } else {
+                        eprintln!("\nVideo & audio merge failed");
+                    }
                 }
             } else {
-                download(&vid, &vid.vid_link, "", "mp4").await;
+                download(&vid, &vid.vid_link, "", vid_ext, false).await;
             }
         }
         _ => println!("{:#?}", vid),
@@ -280,12 +313,16 @@ async fn main() {
 }
 
 fn help() {
+    version();
+
     println!(
-        "\nUsage: titan <argument> <url>\n
+        "\nUsage: titans <argument> <url>\n
 Arguments:                    
 \t-h, --help\t\t Display this help message
+\t-v, --version\t\t Print version
 \t-g, --get\t\t Get streaming link
 \t-p, --play\t\t Play video in mpv
+\t-sp=, --speed=\t\t Play video in mpv at --speed=1.5
 \t-d, --download\t\t Download video in aria2 
 \t-D, --dl_link\t\t Get download link
 \t-s, --stream_link\t Get streaming link
@@ -295,12 +332,20 @@ Arguments:
 \t-c, --combined\t\t Combined video & audio        
 \t-b, --best\t\t best resolution while playing (use it after -p flag)        
 
-Supported Extractors : bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube"
+Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube"
     );
 }
 
-async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
+fn version() {
+    println!("Version: {}", env!("CARGO_PKG_VERSION"));
+}
+
+async fn download(vid: &Vid, link: &str, mut types: &str, extension: &str, format_title: bool) {
     println!("\nDownloading{}: {}", types, vid.title);
+
+    if !format_title {
+        types = "";
+    }
 
     if Command::new("aria2c")
         .arg(link)
@@ -323,4 +368,8 @@ async fn download(vid: &Vid, link: &str, types: &str, extension: &str) {
     } else {
         eprintln!("\nDownload Failed");
     }
+}
+
+async fn starts(prefixes: &[&str], arg: &str) -> bool {
+    prefixes.iter().any(|&prefix| arg.starts_with(prefix))
 }

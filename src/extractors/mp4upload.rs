@@ -3,9 +3,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 pub async fn mp4upload(url: &str) -> Vid {
-    static RE_LINK: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r#"https://(www\.)?mp4upload\.com/(embed-)?([^.]*\.html)"#).unwrap()
-    });
+    static RE_LINK: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"https://(www\.)?mp4upload\.com/(embed-)?([^.]*\.html)").unwrap());
     let mut vid = Vid {
         referrer: format!(
             "https://www.mp4upload.com/embed-{}",

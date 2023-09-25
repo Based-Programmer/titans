@@ -12,14 +12,14 @@ use url::form_urlencoded::byte_serialize;
 
 pub async fn twatter(url: &str) -> Vid {
     static RE_LINK: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r#"https://(nitter\.[^/]*|(www\.|m\.)?twitter\.com)(/[^/]*/status/[0-9]*)"#)
+        Regex::new(r"https://(nitter\.[^/]*|(mobile\.)?(x|twitter)\.com)(/[^/]*/status/[0-9]*)")
             .unwrap()
     });
 
     let mut vid = Vid {
         referrer: format!(
             "https://twitter.com{}",
-            &RE_LINK.captures(url).expect("Invalid twitter link")[3]
+            &RE_LINK.captures(url).expect("Invalid twitter link")[4]
         ),
         ..Default::default()
     };

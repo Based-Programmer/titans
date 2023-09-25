@@ -18,7 +18,7 @@ pub async fn streamvid(url: &str, is_streaming_link: bool) -> Vid {
 
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
-            r#"adb\|html\|embed\|if(\|?\|?(false\|?)?(on)?\|?)?\|([^|]*)\|?.*urlset\|([^|]*).*?([^|]*)?\|hls"#,
+            r"adb\|html\|embed\|if(\|?\|?(false\|?)?(on)?\|?)?\|([^|]*)\|?.*urlset\|([^|]*).*?([^|]*)?\|hls",
         )
         .unwrap()
     });

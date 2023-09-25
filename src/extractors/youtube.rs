@@ -89,9 +89,9 @@ pub async fn youtube(
                     let (vid_codec, audio_codec) = codec
                         .split_once(", ")
                         .expect("Failed to find , which separates video & audio codec");
-                    vid.vid_codec = vid_codec.to_string();
-                    vid.audio_codec = audio_codec.to_string();
-                    vid.resolution = quality;
+                    vid.vid_codec = Some(vid_codec.to_string());
+                    vid.audio_codec = Some(audio_codec.to_string());
+                    vid.resolution = Some(quality);
                 }
             })
         }
@@ -108,11 +108,11 @@ pub async fn youtube(
                     quality == resolution || vid.vid_link.is_empty()
                 } {
                     vid.vid_link = url;
-                    vid.vid_codec = codec;
-                    vid.resolution = quality;
-                } else if codec == audio_codec {
-                    vid.audio_link = url.to_string();
-                    vid.audio_codec = audio_codec.to_string();
+                    vid.vid_codec = Some(codec);
+                    vid.resolution = Some(quality);
+                } else if codec.starts_with(audio_codec) {
+                    vid.audio_link = Some(url.to_string());
+                    vid.audio_codec = Some(codec.to_string());
                 }
             });
         }

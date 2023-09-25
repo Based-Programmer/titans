@@ -4,7 +4,9 @@ use regex::Regex;
 
 pub async fn bitchute(url: &str) -> Vid {
     let mut vid = Vid {
-        referrer: url.to_string(),
+        referrer: url
+            .replace("https://bitchute", "https://www.bitchute")
+            .to_string(),
         ..Default::default()
     };
 
@@ -13,7 +15,7 @@ pub async fn bitchute(url: &str) -> Vid {
     static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<source src="([^"]*)"#).unwrap());
     vid.vid_link = RE.captures(&resp).expect("Failed to get link")[1].to_string();
 
-    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<title>(.*?)</title>"#).unwrap());
+    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<title>(.*?)</title>").unwrap());
     vid.title = RE_TITLE.captures(&resp).expect("Failed to get link")[1].to_string();
 
     vid

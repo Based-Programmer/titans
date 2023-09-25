@@ -23,7 +23,8 @@ pub async fn substack(url: &str) -> Vid {
     );
     } else if resp.contains(r#"\"type\":\"podcast\""#) {
         static RE_AUDIO: Lazy<Regex> = Lazy::new(|| Regex::new(r#"<audio src="([^"]*)"#).unwrap());
-        vid.audio_link = RE_AUDIO.captures(&resp).expect("Failed to get audio")[1].to_string();
+        vid.audio_link =
+            Some(RE_AUDIO.captures(&resp).expect("Failed to get audio")[1].to_string());
 
         static RE_TITLE: Lazy<Regex> =
             Lazy::new(|| Regex::new(r#"\\"title\\":\\"([^"]*)\\"#).unwrap());
