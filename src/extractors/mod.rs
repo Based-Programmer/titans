@@ -4,6 +4,7 @@ pub mod mp4upload;
 pub mod odysee;
 pub mod reddit;
 pub mod rumble;
+pub mod streamdav;
 pub mod streamhub;
 pub mod streamtape;
 pub mod streamvid;

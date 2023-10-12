@@ -87,6 +87,7 @@ titans -h
 - odysee
 - reddit
 - rumble
+- streamdav
 - streamhub
 - streamtape
 - streamvid

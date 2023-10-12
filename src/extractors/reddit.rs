@@ -1,4 +1,4 @@
-use crate::{helpers::reqwests::get_html_isahc, Vid};
+use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -12,14 +12,17 @@ pub async fn reddit(url: &str) -> Vid {
         referrer: format!(
             "https://www.reddit.com{}.json",
             &RE_LINK.captures(url).expect("Illegal url")[4].trim_end_matches('/')
-        ),
+        )
+        .into(),
         ..Default::default()
     };
 
-    let mut resp = get_html_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
+    let mut resp = get_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)", ""#).unwrap());
-    vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1].replace(r#"\""#, "");
+    vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1]
+        .replace(r#"\""#, "")
+        .into();
 
     static DASH_LINK: Lazy<Regex> = Lazy::new(|| Regex::new(r#""dash_url": "([^"]*)"#).unwrap());
     let dash_link = DASH_LINK.captures(&resp).expect("Failed to get link")[1].to_string();
@@ -27,7 +30,7 @@ pub async fn reddit(url: &str) -> Vid {
     static VID_URL: Lazy<Regex> = Lazy::new(|| Regex::new(r#""fallback_url": "([^"]*)"#).unwrap());
 
     vid.vid_link = if let Some(link) = VID_URL.captures(&resp) {
-        link[1].to_string()
+        link[1].into()
     } else {
         static DASH_VID: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"<BaseURL>(DASH_[0-9]*(\.mp4)?)</BaseURL>").unwrap());
@@ -43,15 +46,19 @@ pub async fn reddit(url: &str) -> Vid {
             })
             .expect("Failed to get dash video")[1];
 
-        dash_link.replace("DASHPlaylist.mpd", best_video)
+        dash_link.replace("DASHPlaylist.mpd", best_video).into()
     };
 
-    resp = get_html_isahc(&dash_link, &vid.user_agent, &vid.referrer).await;
+    resp = get_isahc(&dash_link, &vid.user_agent, &vid.referrer).await;
 
     vid.audio_link = if resp.contains("<BaseURL>DASH_audio.mp4</BaseURL>") {
-        Some(dash_link.replace("DASHPlaylist.mpd", "DASH_audio.mp4"))
+        Some(
+            dash_link
+                .replace("DASHPlaylist.mpd", "DASH_audio.mp4")
+                .into(),
+        )
     } else if resp.contains("<BaseURL>audio</BaseURL>") {
-        Some(dash_link.replace("DASHPlaylist.mpd", "audio"))
+        Some(dash_link.replace("DASHPlaylist.mpd", "audio").into())
     } else {
         static RE_DASH_AUDIO: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"<BaseURL>(DASH_AUDIO_[0-9]*(\.mp4)?)</BaseURL>").unwrap());
@@ -63,13 +70,17 @@ pub async fn reddit(url: &str) -> Vid {
                 .parse::<u16>()
                 .expect("Dash audio bitrate not a number")
         }) {
-            Some(dash_link.replace("DASHPlaylist.mpd", audio_link.get(1).unwrap().as_str()))
+            Some(
+                dash_link
+                    .replace("DASHPlaylist.mpd", audio_link.get(1).unwrap().as_str())
+                    .into(),
+            )
         } else {
-            Some(String::new())
+            Some(Box::from(""))
         }
     };
 
-    vid.referrer = vid.referrer.trim_end_matches(".json").to_string();
+    vid.referrer = vid.referrer.trim_end_matches(".json").into();
 
     vid
 }

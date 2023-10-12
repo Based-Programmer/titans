@@ -3,12 +3,13 @@ mod helpers;
 
 use extractors::{
     bitchute::bitchute, doodstream::doodstream, mp4upload::mp4upload, odysee::odysee,
-    reddit::reddit, rumble::rumble, streamhub::streamhub, streamtape::streamtape,
-    streamvid::streamvid, substack::substack, twatter::twatter, youtube::youtube,
+    reddit::reddit, rumble::rumble, streamdav::streamdav, streamhub::streamhub,
+    streamtape::streamtape, streamvid::streamvid, substack::substack, twatter::twatter,
+    youtube::youtube,
 };
 
 use std::{
-    env,
+    env::{args, consts::OS},
     process::{exit, Stdio},
 };
 
@@ -16,27 +17,27 @@ use tokio::{fs, process::Command};
 
 #[derive(Debug)]
 pub struct Vid {
-    user_agent: String,
-    referrer: String,
-    title: String,
-    vid_link: String,
-    vid_codec: Option<String>,
-    resolution: Option<String>,
-    audio_link: Option<String>,
-    audio_codec: Option<String>,
+    user_agent: Box<str>,
+    referrer: Box<str>,
+    title: Box<str>,
+    vid_link: Box<str>,
+    vid_codec: Box<str>,
+    resolution: Option<Box<str>>,
+    audio_link: Option<Box<str>>,
+    audio_codec: Box<str>,
 }
 
 impl Default for Vid {
     fn default() -> Self {
         Self {
-            user_agent: String::from("uwu"),
-            referrer: String::new(),
-            title: String::new(),
-            vid_link: String::new(),
-            vid_codec: Some(String::from("avc")),
+            user_agent: Box::from("uwu"),
+            referrer: Box::from(""),
+            title: Box::from(""),
+            vid_link: Box::from(""),
+            vid_codec: Box::from("avc"),
             resolution: None,
             audio_link: None,
-            audio_codec: Some(String::from("opus")),
+            audio_codec: Box::from("aac"),
         }
     }
 }
@@ -94,6 +95,7 @@ const DOODSTREAM_PREDFIXES: [&str; 5] = [
     "https://dooood.com/",
     "https://doods.pro/",
 ];
+
 #[tokio::main]
 async fn main() {
     let mut vid = Vid::default();
@@ -106,7 +108,7 @@ async fn main() {
     let mut audio_codec = String::from("opus");
     let mut speed = String::new();
 
-    for arg in env::args().skip(1) {
+    for arg in args().skip(1) {
         match arg.as_str() {
             "-h" | "--help" => {
                 help();
@@ -120,15 +122,19 @@ async fn main() {
             "-p" | "--play" => {
                 todo = "play";
                 resolution = String::from("720");
+
                 if !audio_only {
                     is_dash = false;
                 }
             }
-            arg if starts(&["-sp=", "--speed="], arg).await => {
+            arg if starts(&["-sp=", "--speed="], arg) => {
                 speed = format!("--speed={}", arg.split_once('=').unwrap().1);
                 todo = "play";
                 resolution = String::from("720");
-                is_dash = false;
+
+                if !audio_only {
+                    is_dash = false;
+                }
             }
             "-a" | "--audio-only" => audio_only = true,
             "-d" | "--download" => {
@@ -142,7 +148,7 @@ async fn main() {
                 resolution = String::from("720");
             }
             "-b" | "--best" => resolution = String::from("best"),
-            arg if starts(&["-r=", "--resolution="], arg).await => {
+            arg if starts(&["-r=", "--resolution="], arg) => {
                 resolution = arg
                     .split_once('=')
                     .unwrap()
@@ -150,34 +156,35 @@ async fn main() {
                     .trim_end_matches('p')
                     .to_string();
             }
-            arg if starts(&["-vc=", "--video-codec="], arg).await => {
+            arg if starts(&["-vc=", "--video-codec="], arg) => {
                 vid_codec = arg.split_once('=').unwrap().1.to_string();
             }
-            arg if starts(&["-ac=", "--audio-codec="], arg).await => {
+            arg if starts(&["-ac=", "--audio-codec="], arg) => {
                 audio_codec = arg.split_once('=').unwrap().1.to_string();
             }
-            arg if starts(&DOODSTREAM_PREDFIXES, arg).await => {
+            arg if starts(&DOODSTREAM_PREDFIXES, arg) => {
                 vid = doodstream(arg, streaming_link).await
             }
             arg if arg.contains(".substack.com/p/") => vid = substack(arg).await,
             arg if arg.starts_with("https://streamhub.") => {
                 vid = streamhub(arg, streaming_link).await
             }
-            arg if starts(&YT_PREFIXES, arg).await => {
+            arg if starts(&YT_PREFIXES, arg) => {
                 vid = youtube(arg, &resolution, &vid_codec, &audio_codec, is_dash).await
             }
-            arg if starts(&REDDIT_PREFIXES, arg).await => vid = reddit(arg).await,
-            arg if starts(&TWATTER_PREFIXES, arg).await => vid = twatter(arg).await,
-            arg if starts(&ODYSEE_PREFIXES, arg).await => vid = odysee(arg).await,
-            arg if starts(&BITCHUTE_PREFIXES, arg).await => vid = bitchute(arg).await,
-            arg if starts(&RUMBLE_PREFIXES, arg).await => vid = rumble(arg).await,
+            arg if starts(&REDDIT_PREFIXES, arg) => vid = reddit(arg).await,
+            arg if starts(&TWATTER_PREFIXES, arg) => vid = twatter(arg).await,
+            arg if starts(&ODYSEE_PREFIXES, arg) => vid = odysee(arg).await,
+            arg if starts(&BITCHUTE_PREFIXES, arg) => vid = bitchute(arg).await,
+            arg if starts(&RUMBLE_PREFIXES, arg) => vid = rumble(arg).await,
             arg if arg.starts_with("https://streamvid.net") => {
                 vid = streamvid(arg, streaming_link).await
             }
             arg if arg.starts_with("https://streamtape.") => {
                 vid = streamtape(arg, streaming_link).await
             }
-            arg if starts(&MP4UPLOAD_PREFIXES, arg).await => vid = mp4upload(arg).await,
+            arg if starts(&MP4UPLOAD_PREFIXES, arg) => vid = mp4upload(arg).await,
+            arg if arg.starts_with("https://streamdav.com/") => vid = streamdav(arg).await,
             _ => {
                 if arg.starts_with("https://") {
                     eprintln!("Unsupported link: {}\n", arg);
@@ -211,7 +218,7 @@ async fn main() {
                 audio_arg = format!("--audio-file={}", audio_link)
             }
 
-            if env::consts::OS == "android" {
+            if OS == "android" {
                 Command::new("am")
                     .arg("start")
                     .args(["--user", "0"])
@@ -224,7 +231,7 @@ async fn main() {
                     .expect("Failed to execute am command");
             } else if !audio_only {
                 Command::new("mpv")
-                    .arg(vid.vid_link)
+                    .arg(&*vid.vid_link)
                     .arg(audio_arg)
                     .arg(speed)
                     .arg("--no-terminal")
@@ -235,8 +242,8 @@ async fn main() {
                     .spawn()
                     .expect("Failed to execute mpv");
             } else if !Command::new("mpv")
-                .arg(&vid.vid_link)
-                .arg("--speed=1")
+                .arg(&*vid.vid_link)
+                .arg(speed)
                 .arg("--no-video")
                 .arg(format!("--force-media-title={}", vid.title))
                 .arg(format!("--user-agent={}", vid.user_agent))
@@ -250,23 +257,17 @@ async fn main() {
             }
         }
         "download" => {
-            let Some(vid_codec) = &vid.vid_codec else {
-                todo!()
-            };
-
-            let vid_ext = if vid_codec.starts_with("vp9") {
+            let vid_ext = if vid.vid_codec.starts_with("vp9") {
                 "mkv"
             } else {
                 "mp4"
             };
 
             if let Some(audio_link) = &vid.audio_link {
-                let Some(audio_codec) = &vid.audio_codec else {
-                    todo!()
-                };
-
-                let audio_ext = if audio_codec.starts_with("opus") {
+                let audio_ext = if &*vid.audio_codec == "opus" {
                     "opus"
+                } else if vid.audio_codec.starts_with("mp4a") {
+                    "mp4a"
                 } else {
                     "mp3"
                 };
@@ -315,15 +316,17 @@ async fn main() {
 fn help() {
     version();
 
-    println!(
-        "\nUsage: titans <argument> <url>\n
+    println!("
+Usage: titans <argument> <url>
+        
 Arguments:                    
 \t-h, --help\t\t Display this help message
 \t-v, --version\t\t Print version
 \t-g, --get\t\t Get streaming link
 \t-p, --play\t\t Play video in mpv
+\t-a, --audio-only\t Play or Download only the audio        
 \t-sp=, --speed=\t\t Play video in mpv at --speed=1.5
-\t-d, --download\t\t Download video in aria2 
+\t-d, --download\t\t Download video with aria2 
 \t-D, --dl_link\t\t Get download link
 \t-s, --stream_link\t Get streaming link
 \t-r=, --resolution=720p\t Select resolution
@@ -332,8 +335,7 @@ Arguments:
 \t-c, --combined\t\t Combined video & audio        
 \t-b, --best\t\t best resolution while playing (use it after -p flag)        
 
-Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube"
-    );
+Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube");
 }
 
 fn version() {
@@ -370,6 +372,6 @@ async fn download(vid: &Vid, link: &str, mut types: &str, extension: &str, forma
     }
 }
 
-async fn starts(prefixes: &[&str], arg: &str) -> bool {
+fn starts(prefixes: &[&str], arg: &str) -> bool {
     prefixes.iter().any(|&prefix| arg.starts_with(prefix))
 }
