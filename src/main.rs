@@ -335,7 +335,7 @@ Arguments:
 \t-c, --combined\t\t Combined video & audio        
 \t-b, --best\t\t best resolution while playing (use it after -p flag)        
 
-Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamhub, streamtape, streamvid, substack, twatter, youtube");
+Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamdav, streamhub, streamtape, streamvid, substack, twatter, youtube");
 }
 
 fn version() {

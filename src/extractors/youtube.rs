@@ -130,24 +130,11 @@ pub async fn youtube(
                     bt_audio = bitrate;
                 }
 
-                /*
-                let str: &str = &v_link;
-                vid.vid_link = Box::from(str);
-
-                OR
-
-                vid.vid_link = Box::from(&*v_link);
-                or
-                vid.vid_link = Box::from(&v_link[..]);
-                or
-                vid.vid_link = v_link.as_str().into();
-                */
-
-                vid.vid_link = (*v_link).into(); // v_link.into wont wrk, this dereferences String to str
-                vid.audio_codec = a_codec[..].into(); // this creates a slice which is more readable ig
-                vid.audio_link = Some(a_link[..].into());
-                vid.resolution = Some(res[..].into());
-                vid.vid_codec = v_codec[..].into();
+                vid.vid_link = v_link.into();
+                vid.audio_codec = a_codec.into();
+                vid.audio_link = Some(a_link.into());
+                vid.resolution = Some(res.into());
+                vid.vid_codec = v_codec.into();
             }
         }
     }
@@ -159,38 +146,49 @@ pub async fn youtube(
     vid
 }
 
-fn vid_data(format: &Value) -> (String, String, String, u32) {
+fn vid_data(format: &Value) -> (&str, &str, &str, u32) {
     let codec = format["mimeType"]
         .as_str()
         .expect("Failed to get mimeType")
         .split_once(r#"codecs=""#)
         .expect("Failed to get codec")
         .1
-        .trim_end_matches('"')
-        .to_string();
+        .trim_end_matches('"');
 
-    let quality = format["qualityLabel"]
-        .as_str()
-        .unwrap_or_default()
-        .split_once('p')
-        .unwrap_or_default()
-        .0
-        .to_string();
+    let mut default_audio = true; // for videos & audios which doesn't have audioTrack
 
-    let url = format["url"]
-        .as_str()
-        .expect("Failed to get url")
-        .to_string();
+    if codec.starts_with("mp4a") || codec == "opus" {
+        if let Some(audio_track) = format["audioTrack"].as_object() {
+            default_audio = audio_track["audioIsDefault"]
+                .as_bool()
+                .expect("Failed to get audioisDefault");
+        }
+    }
 
-    let bitrate = format["bitrate"]
-        .to_string()
-        .parse()
-        .expect("Failed to convert bitrate into a number");
+    let (quality, url, bitrate) = if default_audio {
+        let quality = format["qualityLabel"]
+            .as_str()
+            .unwrap_or_default()
+            .split_once('p')
+            .unwrap_or_default()
+            .0;
+
+        let url = format["url"].as_str().expect("Failed to get url");
+
+        let bitrate = format["bitrate"]
+            .to_string()
+            .parse()
+            .expect("Failed to convert bitrate into a number");
+
+        (quality, url, bitrate)
+    } else {
+        ("", "", 0)
+    };
 
     (codec, quality, url, bitrate)
 }
 
-fn exit_if_empty(formats: &Vec<serde_json::Value>) {
+fn exit_if_empty<T>(formats: &Vec<T>) {
     if formats.is_empty() {
         eprintln!("{}No result{}", RED, RESET);
         exit(1);
