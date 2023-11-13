@@ -1,7 +1,7 @@
 use crate::Vid;
 use isahc::{AsyncReadResponseExt, Request, RequestExt};
-use serde_json::{json, Value};
-use std::process::exit;
+use serde_json::{json, to_string, Value};
+use std::{error::Error, process::exit};
 
 const RED: &str = "\u{1b}[31m";
 const RESET: &str = "\u{1b}[0m";
@@ -12,7 +12,7 @@ pub async fn youtube(
     mut vid_codec: &str,
     mut audio_codec: &str,
     is_dash: bool,
-) -> Vid {
+) -> Result<Vid, Box<dyn Error>> {
     let id = url
         .rsplit_once("/watch?v=")
         .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
@@ -22,56 +22,61 @@ pub async fn youtube(
         .unwrap_or_default();
 
     let mut vid = Vid {
-        user_agent: Box::from("com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip"),
+        user_agent: "com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip",
         referrer: format!("https://m.youtube.com/watch?v={}", id).into(),
         ..Default::default()
     };
 
     let data: Value = {
-        let resp: &str = {
-            let json = json!({
-            "context": {
-                "client": {
-                    "androidSdkVersion": 30,
-                    "clientName": "ANDROID",
-                    "clientVersion": "17.31.35",
-                    "clientScreen": "WATCH",
-                    "gl": "US",
-                    "hl": "en",
-                    "osName": "Android",
-                    "osVersion": "11",
-                    "platform": "MOBILE"
+        let resp = {
+            let json = {
+                let json_value = json!({
+                "context": {
+                    "client": {
+                        "androidSdkVersion": 30,
+                        "clientName": "ANDROID",
+                        "clientVersion": "17.31.35",
+                        "clientScreen": "WATCH",
+                        "gl": "US",
+                        "hl": "en",
+                        "osName": "Android",
+                        "osVersion": "11",
+                        "platform": "MOBILE"
+                    },
+                    "user": {
+                        "lockedSafetyMode": false
+                    },
+                    "thirdParty": {
+                        "embedUrl": "https://www.youtube.com/"
+                    }
                 },
-                "user": {
-                    "lockedSafetyMode": false
+                "videoId": id,
+                "playbackContext": {
+                    "contentPlaybackContext": {
+                        "signatureTimestamp": 19250
+                    }
                 },
-                "thirdParty": {
-                    "embedUrl": "https://www.youtube.com/"
-                }
-            },
-            "videoId": id,
-            "playbackContext": {
-                "contentPlaybackContext": {
-                    "signatureTimestamp": 19250
-                }
-            },
-            "racyCheckOk": true,
-            "contentCheckOk": true,
-            "params": "CgIQBg"
-            });
+                "racyCheckOk": true,
+                "contentCheckOk": true,
+                "params": "CgIQBg"
+                });
 
-            &Request::post("https://m.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
-            .header("user-agent", &*vid.user_agent)
+                to_string(&json_value)?.into_boxed_str()
+            };
+
+            Request::post("https://m.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
+            .header("user-agent", vid.user_agent)
             .header("referer", &*vid.referrer)
             .header("content-type", "application/json")
             .header("x-youtube-client-name", "ANDROID")
             .header("x-youtube-client-version", "17.31.35")
-            .body(json.to_string()).unwrap()
-            .send_async().await.unwrap()
-            .text().await.unwrap()
+            .body(&*json)?
+            .send_async().await?
+            .text().await?
+            .into_boxed_str()
         };
 
-        serde_json::from_str(resp).expect("Failed to derive json")
+        serde_json::from_str(&resp).expect("Failed to derive json")
     };
 
     vid_codec = match vid_codec {
@@ -143,7 +148,7 @@ pub async fn youtube(
         .expect("Failed to get title")
         .into();
 
-    vid
+    Ok(vid)
 }
 
 fn vid_data(format: &Value) -> (&str, &str, &str, u32) {

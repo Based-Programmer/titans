@@ -10,4 +10,6 @@ pub mod streamtape;
 pub mod streamvid;
 pub mod substack;
 pub mod twatter;
+pub mod vtube;
+pub mod wolfstream;
 pub mod youtube;

@@ -1,48 +1,51 @@
+use std::error::Error;
+
 use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn streamvid(url: &str, is_streaming_link: bool) -> Vid {
-    const BASE_URL: &str = "streamvid.net/";
-
+pub async fn streamvid(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: Box::from(url),
+        referrer: url.replace("streamvid.net/", "streamvid.media/").into(),
         ..Default::default()
     };
 
-    let resp: &str = &get_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
 
     static RE_TITLE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"<h6 class="card-title">(.*?)</h6>"#).unwrap());
-    vid.title = RE_TITLE.captures(resp).unwrap()[1].into();
+    vid.title = RE_TITLE.captures(&resp).unwrap()[1].into();
 
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
-            r"adb\|html\|embed\|if(\|?\|?(false\|?)?(on)?\|?)?\|([^|]*)\|?.*urlset\|([^|]*).*?([^|]*)?\|hls",
+            r"adb\|html\|embed\|if(\|?\|?(false\|?)?(on)?\|?)?\|([^|]*)\|?\|([^|]*).*urlset\|([^|]*).*?([^|]*)?\|hls",
         )
         .unwrap()
     });
 
+    let captures = RE.captures(&resp).expect("Failed to get video link");
+    let mut subdomain = &captures[5];
+    let mut tld = &captures[4];
+
+    if subdomain == "vvplay" {
+        subdomain = tld;
+        tld = "net";
+    }
+
     vid.vid_link = {
-        if is_streaming_link {
+        if streaming_link {
             format!(
-                "https://{}.{}hls/{}{}/index-v1-a1.m3u8",
-                &RE.captures(resp).unwrap()[4],
-                BASE_URL,
-                &RE.captures(resp).unwrap()[6],
-                &RE.captures(resp).unwrap()[5]
+                "https://{}.streamvid.{}/hls/{}{}/index-v1-a1.m3u8",
+                subdomain, tld, &captures[7], &captures[6]
             )
         } else {
             format!(
-                "https://{}.{}{}{}/",
-                &RE.captures(resp).unwrap()[4],
-                BASE_URL,
-                &RE.captures(resp).unwrap()[6],
-                &RE.captures(resp).unwrap()[5]
+                "https://{}.streamvid.{}/{}{}/",
+                subdomain, tld, &captures[7], &captures[6]
             )
         }
     }
     .into();
 
-    vid
+    Ok(vid)
 }

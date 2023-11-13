@@ -1,4 +1,4 @@
-use std::process::exit;
+use std::error::Error;
 
 use isahc::{
     config::{RedirectPolicy::Follow, VersionNegotiation},
@@ -6,27 +6,20 @@ use isahc::{
     AsyncReadResponseExt, Request, RequestExt,
 };
 
-const RED: &str = "\u{1b}[31m";
-const RESET: &str = "\u{1b}[0m";
-const YELLOW: &str = "\u{1b}[33m";
-
-pub async fn get_isahc(link: &str, user_agent: &str, referrer: &str) -> String {
-    Request::get(link)
+pub async fn get_isahc(
+    link: &str,
+    user_agent: &str,
+    referrer: &str,
+) -> Result<Box<str>, Box<dyn Error>> {
+    Ok(Request::get(link)
         .header("user-agent", user_agent)
         .header("referer", referrer)
         .version_negotiation(VersionNegotiation::http2())
         .redirect_policy(Follow)
-        .body(())
-        .unwrap()
+        .body(())?
         .send_async()
-        .await
-        .unwrap_or_else(|err| {
-            eprintln!(
-                "Failed to get response from {YELLOW}{link}{RESET} with Error: {RED}{err}{RESET}"
-            );
-            exit(1);
-        })
+        .await?
         .text()
-        .await
-        .unwrap()
+        .await?
+        .into())
 }

@@ -1,47 +1,35 @@
 use crate::Vid;
 use isahc::{AsyncReadResponseExt, Request, RequestExt};
-use once_cell::sync::Lazy;
-use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::{from_str, json, Value};
 use std::{
+    error::Error,
     fs::{read_to_string, File},
     io::prelude::*,
     time::{SystemTime, UNIX_EPOCH},
 };
-use url::form_urlencoded::byte_serialize;
+use url::{form_urlencoded::byte_serialize, Url};
 
-pub async fn twatter(url: &str) -> Vid {
-    let mut vid = {
-        static RE_LINK: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"https://(nitter\.[^/]*|(mobile\.)?(x|twitter)\.com)(/[^/]*/status/[0-9]*)")
-                .unwrap()
-        });
-
-        Vid {
-            referrer: format!(
-                "https://twitter.com{}",
-                &RE_LINK.captures(url).expect("Invalid twitter link")[4]
-            )
-            .into(),
-            ..Default::default()
-        }
+pub async fn twatter(url: &str) -> Result<Vid, Box<dyn Error>> {
+    let mut vid = Vid {
+        referrer: format!("https://twitter.com{}", Url::parse(url)?.path()).into(),
+        ..Default::default()
     };
 
     let guest_token = match read_to_string("/tmp/twatter_guest_token") {
         Ok(token) => {
             let (last_time, gt) = token.split_once(' ').unwrap();
 
-            if current_time() - last_time.parse::<u64>().unwrap() <= 3600 {
+            if current_time()? - last_time.parse::<u64>().unwrap() <= 3600 {
                 gt.into()
             } else {
-                fetch_guest_token(&vid).await
+                fetch_guest_token(&vid).await?
             }
         }
-        Err(_) => fetch_guest_token(&vid).await,
+        Err(_) => fetch_guest_token(&vid).await?,
     };
 
     let data: Value = {
-        let api: &str = {
+        let api: Box<str> = {
             let id = vid
                 .referrer
                 .rsplit_once('/')
@@ -82,27 +70,28 @@ pub async fn twatter(url: &str) -> Vid {
     "withAuxiliaryUserLabels": false
     }"#;
 
-            &format!(
+            format!(
         "https://twitter.com/i/api/graphql/0hWvDhmW8YQ-S_ib3azIrw/TweetResultByRestId?variables={}&features={}&fieldToggles={}",
         byte_serialize(variables.to_string().as_bytes()).collect::<String>(),
         byte_serialize(FEATURES.as_bytes()).collect::<String>(),
         byte_serialize(FIELDS.as_bytes()).collect::<String>(),
-    )
+    ).into()
         };
 
-        let resp: &str = &Request::get(api)
-        .header("user-agent", &*vid.user_agent)
+        let resp = Request::get(&*api)
+        .header("user-agent", vid.user_agent)
         .header("referer", &*vid.referrer)
         .header("content-type", "application/json")
         .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
         .header("x-guest-token", &*guest_token)
         .body(()).unwrap()
         .send_async().await.unwrap()
-        .text().await.unwrap();
+        .text().await.unwrap()
+        .into_boxed_str();
 
         drop(guest_token);
 
-        serde_json::from_str(resp).expect("Failed to derive json")
+        from_str(&resp).expect("Failed to derive json")
     };
 
     {
@@ -136,71 +125,45 @@ pub async fn twatter(url: &str) -> Vid {
         .expect("Failed to get video link")
         .into();
 
-    vid
+    Ok(vid)
 }
 
-async fn fetch_guest_token(vid: &Vid) -> Box<str> {
-    let mut cookie = String::new();
-
-    {
-        let resp = Request::get(&*vid.referrer)
-            .header("user-agent", &*vid.user_agent)
-            .body(())
-            .unwrap()
-            .send_async()
-            .await
-            .unwrap();
-
-        for set_cookie_value in resp.headers().get_all("set-cookie") {
-            if let Ok(mut set_cookie_str) = set_cookie_value.to_str() {
-                set_cookie_str = set_cookie_str.split_once(';').unwrap().0;
-                cookie.push_str(set_cookie_str);
-                cookie.push(';');
-            }
-        }
-    }
-
-    let resp: &str = &Request::get(&*vid.referrer)
-        .header("user-agent", &*vid.user_agent)
-        .header("Cookie", cookie.trim_end_matches(';'))
-        .body(())
-        .unwrap()
-        .send_async()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-
-    drop(cookie);
-
+async fn fetch_guest_token(vid: &Vid) -> Result<Box<str>, Box<dyn Error>> {
     let guest_token = {
-        static RE_GUEST_TOKEN: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"document\.cookie="gt=([0-9]*)"#).unwrap());
+        const TWATTER_GUEST_TOKEN_API: &str = "https://api.twitter.com/1.1/guest/activate.json";
 
-        RE_GUEST_TOKEN
-            .captures(resp)
-            .expect("Failed to get guest token")[1]
+        let resp = Request::post(TWATTER_GUEST_TOKEN_API)
+        .header("user-agent", vid.user_agent)
+        .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
+        .body(())?
+        .send_async()
+        .await?
+        .text()
+        .await?
+        .into_boxed_str();
+
+        let data: Value = from_str(&resp).expect("Failed to serialize guest token json");
+
+        data["guest_token"]
+            .as_str()
+            .expect("Failed to get guest token")
             .into()
     };
 
     {
-        let current_time = current_time();
+        let current_time = current_time()?;
 
         match File::create("/tmp/twatter_guest_token") {
             Ok(mut file) => file
                 .write_all(format!("{current_time} {guest_token}").as_bytes())
-                .unwrap_or_else(|_| eprintln!("Failed to write file")),
+                .expect("Failed to write file"),
             Err(_) => eprintln!("Failed to create file"),
-        };
+        }
     }
 
-    guest_token
+    Ok(guest_token)
 }
 
-fn current_time() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs()
+fn current_time() -> Result<u64, Box<dyn Error>> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }

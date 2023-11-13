@@ -1,10 +1,10 @@
 use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::time::SystemTime;
+use std::{error::Error, time::SystemTime};
 
-pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
-    const DOOD_LINK: &str = "https://dood.ws";
+pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
+    const DOOD_LINK: &str = "https://ds2play.com";
 
     let mut vid = {
         let path = url.trim_end_matches('/').rsplit_once('/').unwrap().1;
@@ -15,7 +15,7 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
         }
     };
 
-    let mut resp = get_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
 
     vid.title = {
         static RE_TITLE: Lazy<Regex> =
@@ -42,7 +42,9 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
             )
         };
 
-        resp = get_isahc(link, &vid.user_agent, &vid.referrer).await;
+        drop(resp);
+        let resp = get_isahc(link, vid.user_agent, &vid.referrer).await?;
+
         vid.vid_link = format!(
             "{}?{}&expiry={}",
             resp,
@@ -58,22 +60,21 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Vid {
             static RE: Lazy<Regex> =
                 Lazy::new(|| Regex::new(r"get\('/pass_md5/([^/]*)/([^']*)").unwrap());
 
-            &format!(
-                "{}/download/{}/n/{}",
-                DOOD_LINK,
-                &RE.captures(&resp).unwrap()[2],
-                &RE.captures(&resp).unwrap()[1],
-            )
+            let captures = RE.captures(&resp).expect("Failed to get video link");
+
+            &format!("{}/download/{}/n/{}", DOOD_LINK, &captures[2], &captures[1])
         };
-        resp = get_isahc(link, &vid.user_agent, &vid.referrer).await;
+
+        drop(resp);
+        let resp = get_isahc(link, vid.user_agent, &vid.referrer).await?;
 
         static RE_LINK: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"(https://[^.]*\.video-delivery\.net/[^']*)").unwrap());
+            Lazy::new(|| Regex::new(r#"(https://[^.]*\.video-delivery\.net/[^"']*)"#).unwrap());
         vid.vid_link = RE_LINK
             .captures(&resp)
             .expect("Failed to get download link")[1]
             .into();
     }
 
-    vid
+    Ok(vid)
 }

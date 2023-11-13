@@ -93,4 +93,6 @@ titans -h
 - streamvid
 - substack
 - twatter
+- vtube
+- wolfstream
 - youtube

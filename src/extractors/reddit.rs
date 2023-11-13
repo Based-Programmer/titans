@@ -1,23 +1,19 @@
 use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::error::Error;
+use url::Url;
 
-pub async fn reddit(url: &str) -> Vid {
-    static RE_LINK: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"https://((libreddit|teddit)\.[^/]*|(www\.|old\.)?reddit\.com|redd\.it)(.*)")
-            .unwrap()
-    });
-
+pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: format!(
-            "https://www.reddit.com{}.json",
-            &RE_LINK.captures(url).expect("Illegal url")[4].trim_end_matches('/')
-        )
-        .into(),
+        referrer: format!("https://www.reddit.com{}", Url::parse(url)?.path()).into(),
         ..Default::default()
     };
 
-    let mut resp = get_isahc(&vid.referrer, &vid.user_agent, &vid.referrer).await;
+    let resp = {
+        let json_url = format!("{}.json", vid.referrer);
+        get_isahc(&json_url, vid.user_agent, &json_url).await?
+    };
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)", ""#).unwrap());
     vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1]
@@ -25,7 +21,7 @@ pub async fn reddit(url: &str) -> Vid {
         .into();
 
     static DASH_LINK: Lazy<Regex> = Lazy::new(|| Regex::new(r#""dash_url": "([^"]*)"#).unwrap());
-    let dash_link = DASH_LINK.captures(&resp).expect("Failed to get link")[1].to_string();
+    let dash_link: Box<str> = DASH_LINK.captures(&resp).expect("Failed to get link")[1].into();
 
     static VID_URL: Lazy<Regex> = Lazy::new(|| Regex::new(r#""fallback_url": "([^"]*)"#).unwrap());
 
@@ -48,8 +44,8 @@ pub async fn reddit(url: &str) -> Vid {
 
         dash_link.replace("DASHPlaylist.mpd", best_video).into()
     };
-
-    resp = get_isahc(&dash_link, &vid.user_agent, &vid.referrer).await;
+    drop(resp);
+    let resp = get_isahc(&dash_link, vid.user_agent, &vid.referrer).await?;
 
     vid.audio_link = if resp.contains("<BaseURL>DASH_audio.mp4</BaseURL>") {
         Some(
@@ -63,24 +59,17 @@ pub async fn reddit(url: &str) -> Vid {
         static RE_DASH_AUDIO: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"<BaseURL>(DASH_AUDIO_[0-9]*(\.mp4)?)</BaseURL>").unwrap());
 
-        if let Some(audio_link) = RE_DASH_AUDIO.captures_iter(&resp).max_by_key(|resolution| {
-            resolution[1]
-                .trim_start_matches("DASH_AUDIO_")
-                .trim_end_matches(".mp4")
-                .parse::<u16>()
-                .expect("Dash audio bitrate not a number")
-        }) {
-            Some(
-                dash_link
-                    .replace("DASHPlaylist.mpd", audio_link.get(1).unwrap().as_str())
-                    .into(),
-            )
-        } else {
-            Some(Box::from(""))
-        }
+        RE_DASH_AUDIO
+            .captures_iter(&resp)
+            .max_by_key(|resolution| {
+                resolution[1]
+                    .trim_start_matches("DASH_AUDIO_")
+                    .trim_end_matches(".mp4")
+                    .parse::<u16>()
+                    .expect("Dash audio bitrate not a number")
+            })
+            .map(|audio_link| dash_link.replace("DASHPlaylist.mpd", &audio_link[1]).into())
     };
 
-    vid.referrer = vid.referrer.trim_end_matches(".json").into();
-
-    vid
+    Ok(vid)
 }
