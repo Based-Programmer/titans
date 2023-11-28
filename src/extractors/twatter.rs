@@ -1,4 +1,4 @@
-use crate::Vid;
+use crate::{helpers::unescape_html_chars::unescape_html_chars, Vid};
 use isahc::{AsyncReadResponseExt, Request, RequestExt};
 use serde_json::{from_str, json, Value};
 use std::{
@@ -95,15 +95,16 @@ pub async fn twatter(url: &str) -> Result<Vid, Box<dyn Error>> {
     };
 
     {
-        let title = data["data"]["tweetResult"]["result"]["legacy"]["full_text"]
+        let title_data = data["data"]["tweetResult"]["result"]["legacy"]["full_text"]
             .as_str()
             .expect("Failed to get title");
 
-        vid.title = title
+        let title = title_data
             .rsplit_once(" https://t.co/")
-            .unwrap_or((title, ""))
-            .0
-            .into();
+            .unwrap_or((title_data, ""))
+            .0;
+
+        vid.title = unescape_html_chars(title);
     }
 
     vid.vid_link = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]["media"][0]

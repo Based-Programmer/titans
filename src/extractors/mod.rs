@@ -3,6 +3,7 @@ pub mod doodstream;
 pub mod mp4upload;
 pub mod odysee;
 pub mod reddit;
+pub mod rokfin;
 pub mod rumble;
 pub mod streamdav;
 pub mod streamhub;

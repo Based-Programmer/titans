@@ -81,18 +81,19 @@ titans -h
 
 ## Supported Sites
 
-- bitchute
-- doodstream
-- mp4upload
-- odysee
-- reddit
-- rumble
-- streamdav
-- streamhub
-- streamtape
-- streamvid
-- substack
-- twatter
-- vtube
-- wolfstream
-- youtube
+- [bitchute](https://www.bitchute.com)
+- [doodstream](https://doodstream.com)
+- [mp4upload](https://www.mp4upload.com)
+- [odysee](https://odysee.com/)
+- [reddit](https://www.reddit.com)
+- [rokfin](https://rokfin.com)
+- [rumble](https://rumble.com)
+- [streamdav](https://streamdav.com)
+- [streamhub](https://streamhub.top)
+- [streamtape](https://streamtape.xyz)
+- [streamvid](https://streamvid.media)
+- [substack](https://www.substack.com)
+- [twatter](https://twitter.com)
+- [vtube](https://vtbe.network)
+- [wolfstream](https://wolfstream.tv)
+- [youtube](https://www.youtube.com)

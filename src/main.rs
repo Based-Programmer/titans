@@ -3,12 +3,10 @@ mod helpers;
 
 use extractors::{
     bitchute::bitchute, doodstream::doodstream, mp4upload::mp4upload, odysee::odysee,
-    reddit::reddit, rumble::rumble, streamdav::streamdav, streamhub::streamhub,
+    reddit::reddit, rokfin::rokfin, rumble::rumble, streamdav::streamdav, streamhub::streamhub,
     streamtape::streamtape, streamvid::streamvid, substack::substack, twatter::twatter,
     vtube::vtube, wolfstream::wolfstream, youtube::youtube,
 };
-
-use helpers::unescape_html_chars::unescape_html_chars;
 
 use std::{
     env::{args, consts::OS},
@@ -152,7 +150,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut resolution = String::from("best");
     let mut vid_codec = String::from("avc");
     let mut audio_codec = String::from("opus");
-    let mut speed = String::new();
+    let mut speed: Box<str> = Box::from("");
     let set_play =
         |todo: &mut Todo, resolution: &mut String, audio_only: bool, is_dash: &mut bool| {
             *todo = Todo::Play;
@@ -179,7 +177,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 set_play(&mut todo, &mut resolution, audio_only, &mut is_dash);
             }
             arg if starts(&["-sp=", "--speed="], arg) => {
-                speed = format!("--speed={}", arg.rsplit_once('=').unwrap().1);
+                speed = format!("--speed={}", arg.rsplit_once('=').unwrap().1).into();
                 set_play(&mut todo, &mut resolution, audio_only, &mut is_dash);
             }
             "-a" | "--audio-only" => audio_only = true,
@@ -235,6 +233,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             arg if starts(&VTUBE_PREFIXES, arg) => vid = vtube(arg, streaming_link).await?,
             arg if starts(&MP4UPLOAD_PREFIXES, arg) => vid = mp4upload(arg).await?,
+            arg if arg.starts_with("https://rokfin.com/post/") => {
+                vid = rokfin(arg, &resolution).await?
+            }
             _ => {
                 if arg.starts_with("https://") {
                     eprintln!("{RED}Unsupported link:{YELLOW} {arg}{RESET}\n");
@@ -246,12 +247,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    drop(resolution);
+    drop(vid_codec);
+    drop(audio_codec);
+
     if no_args {
         eprintln!("{RED}No args provided{RESET}\n");
         help_exit(1);
     }
-
-    vid.title = unescape_html_chars(&vid.title).into();
 
     if vid.vid_codec.is_empty() {
         vid.vid_codec = Box::from("avc");
@@ -311,18 +314,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
                 };
 
-                let mpv_args = [
-                    &*vid.vid_link,
-                    &speed,
-                    &format!("--force-media-title={}", vid.title),
-                    &format!("--user-agent={}", vid.user_agent),
-                    &format!("--referrer={}", vid.referrer),
+                let mut mpv_args = vec![
+                    vid.vid_link.to_string(),
+                    format!("--force-media-title={}", vid.title),
+                    format!("--user-agent={}", vid.user_agent),
+                    format!("--referrer={}", vid.referrer),
                 ];
+
+                if !speed.is_empty() {
+                    mpv_args.push(speed.to_string());
+                }
+
+                if !audio_arg.is_empty() {
+                    mpv_args.push(audio_arg);
+                }
 
                 if !audio_only {
                     Command::new(mpv)
                         .args(mpv_args)
-                        .args([&audio_arg, "--no-terminal", "--force-window=immediate"])
+                        .args(["--no-terminal", "--force-window=immediate"])
                         .spawn()
                         .expect("Failed to execute mpv");
                 } else if !Command::new(mpv)
@@ -412,7 +422,7 @@ Arguments:
 \t-c, --combined\t\t Combined video & audio
 \t-b, --best\t\t best resolution while playing (use it after -p flag)
 
-Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rumble, streamdav, streamhub, streamtape, streamvid, substack, twatter, vtube, wolfstream, youtube");
+Supported Extractors: bitchute, doodstream, mp4upload, odysee, reddit, rokfin, rumble, streamdav, streamhub, streamtape, streamvid, substack, twatter, vtube, wolfstream, youtube");
 }
 
 fn version() {
@@ -427,15 +437,17 @@ async fn download(vid: &Vid, link: &str, mut types: &str, extension: &str, forma
     }
 
     if Command::new("aria2c")
-        .arg(link)
-        .arg("--max-connection-per-server=16")
-        .arg("--max-concurrent-downloads=16")
-        .arg("--split=16")
-        .arg("--min-split-size=1M")
-        .arg("--check-certificate=false")
-        .arg("--summary-interval=0")
-        .arg("--download-result=hide")
-        .arg(format!("--out={}{}.{}", vid.title, types, extension))
+        .args([
+            link,
+            "--max-connection-per-server=16",
+            "--max-concurrent-downloads=16",
+            "--split=16",
+            "--min-split-size=1M",
+            "--check-certificate=false",
+            "--summary-interval=0",
+            "--download-result=hide",
+            &format!("--out={}{}.{}", vid.title, types, extension),
+        ])
         .args(["--user-agent", vid.user_agent])
         .args(["--referer", &vid.referrer])
         .status()

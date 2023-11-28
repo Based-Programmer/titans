@@ -5,10 +5,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 pub async fn vtube(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
-    const STREAM_URL: &str = "vtube.network";
+    const BASE_URL: &str = "vtube.network/";
 
     let mut vid = Vid {
-        referrer: url.into(),
+        referrer: url.replacen("vtbe.to/", BASE_URL, 1).into(),
         ..Default::default()
     };
 
@@ -30,13 +30,13 @@ pub async fn vtube(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Er
     vid.vid_link = {
         if is_streaming_link {
             format!(
-                "https://{}.{}/hls/{}{}/index-v1-a1.m3u8",
-                &captures[3], STREAM_URL, &captures[2], seg
+                "https://{}.{}hls/{}{}/index-v1-a1.m3u8",
+                &captures[3], BASE_URL, &captures[2], seg
             )
         } else {
             format!(
-                "https://{}.{}/{}{}/",
-                &captures[3], STREAM_URL, &captures[2], seg
+                "https://{}.{}{}{}/",
+                &captures[3], BASE_URL, &captures[2], seg
             )
         }
     }

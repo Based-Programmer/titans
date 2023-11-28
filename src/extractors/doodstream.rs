@@ -4,13 +4,13 @@ use regex::Regex;
 use std::{error::Error, time::SystemTime};
 
 pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
-    const DOOD_LINK: &str = "https://ds2play.com";
+    const BASE_URL: &str = "https://dood.to";
 
     let mut vid = {
         let path = url.trim_end_matches('/').rsplit_once('/').unwrap().1;
 
         Vid {
-            referrer: format!("{}/e/{}", DOOD_LINK, path).into(),
+            referrer: format!("{}/e/{}", BASE_URL, path).into(),
             ..Default::default()
         }
     };
@@ -37,7 +37,7 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<d
 
             &format!(
                 "{}{}",
-                DOOD_LINK,
+                BASE_URL,
                 &RE_MD5.captures(&resp).expect("Failed to get pass md5")[1]
             )
         };
@@ -62,7 +62,7 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<d
 
             let captures = RE.captures(&resp).expect("Failed to get video link");
 
-            &format!("{}/download/{}/n/{}", DOOD_LINK, &captures[2], &captures[1])
+            &format!("{}/download/{}/n/{}", BASE_URL, &captures[2], &captures[1])
         };
 
         drop(resp);

@@ -1,12 +1,15 @@
 use std::error::Error;
 
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::{reqwests::get_isahc, unescape_html_chars::unescape_html_chars},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 pub async fn streamvid(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: url.replace("streamvid.net/", "streamvid.media/").into(),
+        referrer: url.replacen("streamvid.net/", "streamvid.media/", 1).into(),
         ..Default::default()
     };
 
@@ -14,34 +17,40 @@ pub async fn streamvid(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn E
 
     static RE_TITLE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"<h6 class="card-title">(.*?)</h6>"#).unwrap());
-    vid.title = RE_TITLE.captures(&resp).unwrap()[1].into();
+    vid.title = unescape_html_chars(&RE_TITLE.captures(&resp).unwrap()[1]);
 
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
-            r"adb\|html\|embed\|if(\|?\|?(false\|?)?(on)?\|?)?\|([^|]*)\|?\|([^|]*).*urlset\|([^|]*).*?([^|]*)?\|hls",
+            r"\|html\|embed\|if\|?\|?(false\|?)?(on)?\|([^|]*)\|?\|?(ausfile)?\|?\|([^|]*).*urlset\|([^|]*).*?([^|]*)?\|hls",
         )
         .unwrap()
     });
 
     let captures = RE.captures(&resp).expect("Failed to get video link");
     let mut subdomain = &captures[5];
-    let mut tld = &captures[4];
+    let mut tld = &captures[3];
 
     if subdomain == "vvplay" {
         subdomain = tld;
         tld = "net";
     }
 
+    let domain_name = if let Some(domain_name) = captures.get(4) {
+        domain_name.as_str()
+    } else {
+        "streamvid"
+    };
+
     vid.vid_link = {
         if streaming_link {
             format!(
-                "https://{}.streamvid.{}/hls/{}{}/index-v1-a1.m3u8",
-                subdomain, tld, &captures[7], &captures[6]
+                "https://{}.{}.{}/hls/{}{}/index-v1-a1.m3u8",
+                subdomain, domain_name, tld, &captures[7], &captures[6]
             )
         } else {
             format!(
-                "https://{}.streamvid.{}/{}{}/",
-                subdomain, tld, &captures[7], &captures[6]
+                "https://{}.{}.{}/{}{}/",
+                subdomain, domain_name, tld, &captures[7], &captures[6]
             )
         }
     }

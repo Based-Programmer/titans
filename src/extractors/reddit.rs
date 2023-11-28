@@ -42,7 +42,7 @@ pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
             })
             .expect("Failed to get dash video")[1];
 
-        dash_link.replace("DASHPlaylist.mpd", best_video).into()
+        dash_link.replacen("DASHPlaylist.mpd", best_video, 1).into()
     };
     drop(resp);
     let resp = get_isahc(&dash_link, vid.user_agent, &vid.referrer).await?;
@@ -50,11 +50,11 @@ pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
     vid.audio_link = if resp.contains("<BaseURL>DASH_audio.mp4</BaseURL>") {
         Some(
             dash_link
-                .replace("DASHPlaylist.mpd", "DASH_audio.mp4")
+                .replacen("DASHPlaylist.mpd", "DASH_audio.mp4", 1)
                 .into(),
         )
     } else if resp.contains("<BaseURL>audio</BaseURL>") {
-        Some(dash_link.replace("DASHPlaylist.mpd", "audio").into())
+        Some(dash_link.replacen("DASHPlaylist.mpd", "audio", 1).into())
     } else {
         static RE_DASH_AUDIO: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"<BaseURL>(DASH_AUDIO_[0-9]*(\.mp4)?)</BaseURL>").unwrap());
@@ -68,7 +68,11 @@ pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
                     .parse::<u16>()
                     .expect("Dash audio bitrate not a number")
             })
-            .map(|audio_link| dash_link.replace("DASHPlaylist.mpd", &audio_link[1]).into())
+            .map(|audio_link| {
+                dash_link
+                    .replacen("DASHPlaylist.mpd", &audio_link[1], 1)
+                    .into()
+            })
     };
 
     Ok(vid)

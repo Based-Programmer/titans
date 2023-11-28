@@ -7,7 +7,7 @@ use regex::Regex;
 pub async fn bitchute(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
         referrer: url
-            .replace("https://bitchute", "https://www.bitchute")
+            .replacen("https://bitchute", "https://www.bitchute", 1)
             .into(),
         ..Default::default()
     };

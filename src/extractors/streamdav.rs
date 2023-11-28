@@ -1,12 +1,17 @@
 use std::error::Error;
 
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::{reqwests::get_isahc, unescape_html_chars::unescape_html_chars},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 pub async fn streamdav(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: url.replace("streamdav.com/v/", "streamdav.com/e/").into(),
+        referrer: url
+            .replacen("streamdav.com/v/", "streamdav.com/e/", 1)
+            .into(),
         ..Default::default()
     };
 
@@ -18,9 +23,8 @@ pub async fn streamdav(url: &str) -> Result<Vid, Box<dyn Error>> {
 
     static RE_VID: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"<source src="(.*?)" res="([0-9]*)""#).unwrap());
-    vid.vid_link = RE_VID.captures(&resp).expect("Failed to get video link")[1]
-        .replace("&amp;", "&")
-        .into();
+    vid.vid_link =
+        unescape_html_chars(&RE_VID.captures(&resp).expect("Failed to get video link")[1]);
     vid.resolution = Some(RE_VID.captures(&resp).expect("Failed to get resolution")[2].into());
 
     Ok(vid)

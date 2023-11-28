@@ -1,4 +1,4 @@
-pub fn unescape_html_chars(title: &str) -> String {
+pub fn unescape_html_chars(title: &str) -> Box<str> {
     title
         .replace("&amp;", "&")
         .replace("&lt;", "<")
@@ -8,4 +8,5 @@ pub fn unescape_html_chars(title: &str) -> String {
         .replace("&#x27;", "'")
         .replace("&#40;", "(")
         .replace("&#41;", ")")
+        .into()
 }

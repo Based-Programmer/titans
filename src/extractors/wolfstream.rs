@@ -6,7 +6,7 @@ use regex::Regex;
 
 pub async fn wolfstream(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: url.replace("embed-", "").into(),
+        referrer: url.replacen("embed-", "", 1).into(),
         ..Default::default()
     };
 
