@@ -1,29 +1,34 @@
 use std::error::Error;
 
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::reqwests::{client, get_isahc_client},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 pub async fn rumble(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
+        user_agent: "Mozilla/5.0 FurryFox",
         referrer: url.into(),
         ..Default::default()
     };
 
-    {
-        let resp = get_isahc(url, vid.user_agent, url).await?;
+    let client = &client(vid.user_agent, &vid.referrer)?;
+    let resp = {
+        let resp = get_isahc_client(client, url).await?;
 
         static RE_ID: Lazy<Regex> = Lazy::new(|| {
             Regex::new(r#"href="https://rumble.com/api/Media/oembed.json\?url=https%3A%2F%2Frumble.com%2Fembed%2F(.*?)%2F""#).unwrap()
         });
-        vid.vid_link = format!(
+        let id_link = format!(
             "https://rumble.com/embedJS/u3/?request=video&ver=2&v={}",
             &RE_ID.captures(&resp).expect("Failed to get id")[1]
-        )
-        .into();
-    }
+        );
+        drop(resp);
 
-    let resp = get_isahc(&vid.vid_link, vid.user_agent, &vid.referrer).await?;
+        get_isahc_client(client, &id_link).await?
+    };
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title":"([^"]*)"#).unwrap());
     vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1].into();
@@ -47,7 +52,7 @@ pub async fn rumble(url: &str) -> Result<Vid, Box<dyn Error>> {
             .into(); // to drop resp
 
         drop(resp);
-        let resp = get_isahc(&url, vid.user_agent, &vid.referrer).await?;
+        let resp = get_isahc_client(client, &url).await?;
 
         vid.vid_link = resp.lines().last().unwrap().into();
     }

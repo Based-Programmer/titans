@@ -22,7 +22,7 @@ cargo build --release
 sudo cp target/release/titans /usr/local/bin/
 ````
 
-- Or Build it directly from crate
+- Or Build it directly with cargo
 
 ````sh
 cargo install titans
@@ -84,14 +84,14 @@ titans -h
 - [bitchute](https://www.bitchute.com)
 - [doodstream](https://doodstream.com)
 - [mp4upload](https://www.mp4upload.com)
-- [odysee](https://odysee.com/)
+- [odysee](https://odysee.com)
 - [reddit](https://www.reddit.com)
 - [rokfin](https://rokfin.com)
 - [rumble](https://rumble.com)
 - [streamdav](https://streamdav.com)
-- [streamhub](https://streamhub.top)
+- [streamhub](https://streamhub.to)
 - [streamtape](https://streamtape.xyz)
-- [streamvid](https://streamvid.media)
+- [streamvid](https://streamvid.net)
 - [substack](https://www.substack.com)
 - [twatter](https://twitter.com)
 - [vtube](https://vtbe.network)

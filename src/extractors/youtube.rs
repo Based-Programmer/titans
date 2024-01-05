@@ -1,5 +1,5 @@
 use crate::Vid;
-use isahc::{AsyncReadResponseExt, Request, RequestExt};
+use isahc::{AsyncReadResponseExt, Request, RequestExt, config::{Configurable, VersionNegotiation}};
 use serde_json::{json, to_string, Value};
 use std::{error::Error, process::exit};
 
@@ -70,6 +70,7 @@ pub async fn youtube(
             .header("content-type", "application/json")
             .header("x-youtube-client-name", "ANDROID")
             .header("x-youtube-client-version", "17.31.35")
+            .version_negotiation(VersionNegotiation::http2())    
             .body(&*json)?
             .send_async().await?
             .text().await?
@@ -93,20 +94,20 @@ pub async fn youtube(
         if let Some(formats) = data["streamingData"]["formats"].as_array() {
             exit_if_empty(formats);
 
-            let (mut codec, mut quality, mut url);
-
             for format in formats {
-                (codec, quality, url, _) = vid_data(format);
+                let (codec, quality, url, _) = vid_data(format)?;
 
                 if quality == resolution {
-                    vid.vid_link = url.into();
                     let (vid_codec, audio_codec) = codec
                         .split_once(", ")
                         .expect(r#"Failed to find ", " which separates video & audio codec"#);
 
+                    vid.vid_link = url.into();
                     vid.vid_codec = vid_codec.into();
                     vid.audio_codec = audio_codec.into();
                     vid.resolution = Some(quality.into());
+
+                    break;
                 }
             }
         }
@@ -115,14 +116,13 @@ pub async fn youtube(
     if vid.vid_link.is_empty() {
         if let Some(formats) = data["streamingData"]["adaptiveFormats"].as_array() {
             exit_if_empty(formats);
-            let mut bt_audio: u32 = 0;
-            let mut bt_video: u32 = 0;
+            let mut bt_audio = 0;
+            let mut bt_video = 0;
 
-            let (mut codec, mut quality, mut url, mut bitrate);
             let (mut v_codec, mut a_codec, mut v_link, mut a_link, mut res) = Default::default();
 
             for format in formats {
-                (codec, quality, url, bitrate) = vid_data(format);
+                let (codec, quality, url, bitrate) = vid_data(format)?;
 
                 if codec.starts_with(vid_codec) && { bitrate > bt_video || quality == resolution } {
                     v_link = url;
@@ -134,13 +134,13 @@ pub async fn youtube(
                     a_codec = codec;
                     bt_audio = bitrate;
                 }
-
-                vid.vid_link = v_link.into();
-                vid.audio_codec = a_codec.into();
-                vid.audio_link = Some(a_link.into());
-                vid.resolution = Some(res.into());
-                vid.vid_codec = v_codec.into();
             }
+
+            vid.vid_link = v_link.into();
+            vid.audio_codec = a_codec.into();
+            vid.audio_link = Some(a_link.into());
+            vid.resolution = Some(res.into());
+            vid.vid_codec = v_codec.into();
         }
     }
     vid.title = data["videoDetails"]["title"]
@@ -151,7 +151,7 @@ pub async fn youtube(
     Ok(vid)
 }
 
-fn vid_data(format: &Value) -> (&str, &str, &str, u32) {
+fn vid_data(format: &Value) -> Result<(&str, &str, &str, u32), Box<dyn Error>> {
     let codec = format["mimeType"]
         .as_str()
         .expect("Failed to get mimeType")
@@ -181,16 +181,16 @@ fn vid_data(format: &Value) -> (&str, &str, &str, u32) {
         let url = format["url"].as_str().expect("Failed to get url");
 
         let bitrate = format["bitrate"]
-            .to_string()
-            .parse()
-            .expect("Failed to convert bitrate into a number");
+            .as_u64()
+            .expect("Failed to convert bitrate into a number")
+            .try_into()?;
 
         (quality, url, bitrate)
     } else {
         ("", "", 0)
     };
 
-    (codec, quality, url, bitrate)
+    Ok((codec, quality, url, bitrate))
 }
 
 fn exit_if_empty<T>(formats: &Vec<T>) {

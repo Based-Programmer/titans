@@ -9,7 +9,8 @@ use regex::Regex;
 
 pub async fn streamvid(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: url.replacen("streamvid.net/", "streamvid.media/", 1).into(),
+        // referrer: url.replacen("streamvid.net/", "streamvid.media/", 1).into(),
+        referrer: url.into(),
         ..Default::default()
     };
 

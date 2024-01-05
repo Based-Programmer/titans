@@ -51,90 +51,6 @@ enum Todo {
     Debug,
 }
 
-const RUMBLE_PREFIXES: [&str; 2] = ["https://rumble.com/", "https://www.rumble.com/"];
-const MP4UPLOAD_PREFIXES: [&str; 2] = ["https://mp4upload.com/", "https://www.mp4upload.com/"];
-const VTUBE_PREFIXES: [&str; 2] = ["https://vtbe.to/", "https://vtube.network/"];
-
-const BITCHUTE_PREFIXES: [&str; 2] = [
-    "https://bitchute.com/video/",
-    "https://www.bitchute.com/video/",
-];
-
-const ODYSEE_PREFIXES: [&str; 4] = [
-    "https://odysee.com/",
-    // Librarian
-    "https://lbry.",
-    "https://librarian.",
-    "https://odysee.076.ne.jp/",
-];
-
-const YT_PREFIXES: [&str; 13] = [
-    "https://youtu.be/",
-    // Piped
-    "https://piped.",
-    "https://watch.leptons.xyz/",
-    "https://pi.ggtyler.dev",
-    // Invidious instances generally start with invidious, inv, etc
-    "https://invidious.",
-    "https://inv.",
-    "https://iv.",
-    "https://yt.",
-    "https://yewtu.be/",
-    "https://vid.puffyan.us/",
-    "https://vid.priv.au/",
-    "https://onion.tube/",
-    "https://anontube.lvkaszus.pl/",
-];
-
-const REDDIT_PREFIXES: [&str; 17] = [
-    // Reddit
-    "https://www.reddit.com/",
-    "https://old.reddit.com/",
-    "https://redd.it/",
-    "https://reddit.", // bcz some libreddit & teddit instances start with reddit.
-    // Libreddit
-    "https://libreddit.",
-    "https:://lr.",
-    "https://safereddit.com/",
-    "https://r.walkx.fyi/",
-    "https://l.opnxng.com/",
-    "https://snoo.habedieeh.re/",
-    // Teddit
-    "https://teddit.",
-    "https://snoo.ioens.is/",
-    "https://incogsnoo.com/",
-    "https://rdt.trom.tf/",
-    "https://i.opnxng.com/",
-    "https://td.vern.cc/",
-    "https://t.sneed.network/",
-];
-
-const TWATTER_PREFIXES: [&str; 13] = [
-    "https://x.com/",
-    "https://www.x.com/",
-    "https://mobile.x.com/",
-    "https://twitter.com/",
-    "https://www.twitter.com/",
-    "https://mobile.twitter.com/",
-    // Nitter
-    "https://nitter.",
-    "https://nt.",
-    "https://n.",
-    "https://twiiit.com/",
-    "https://tweet.lambda.dance/",
-    "https://bird.habedieeh.re/",
-    "https://t.com.sb/",
-];
-
-const DOODSTREAM_PREFIXES: [&str; 6] = [
-    "https://doodstream.com/",
-    "https://www.doodstream.com/",
-    "https://ds2play.com/",
-    "https://dooood.com/",
-    "https://doods.pro/",
-    "https://dood.",
-];
-
 const RED: &str = "\u{1b}[31m";
 const RESET: &str = "\u{1b}[0m";
 const YELLOW: &str = "\u{1b}[33m";
@@ -160,6 +76,90 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 *is_dash = false;
             }
         };
+
+    const RUMBLE_PREFIXES: [&str; 2] = ["https://rumble.com/", "https://www.rumble.com/"];
+    const MP4UPLOAD_PREFIXES: [&str; 2] = ["https://mp4upload.com/", "https://www.mp4upload.com/"];
+    const VTUBE_PREFIXES: [&str; 2] = ["https://vtbe.to/", "https://vtube.network/"];
+
+    const BITCHUTE_PREFIXES: [&str; 2] = [
+        "https://bitchute.com/video/",
+        "https://www.bitchute.com/video/",
+    ];
+
+    const ODYSEE_PREFIXES: [&str; 4] = [
+        "https://odysee.com/",
+        // Librarian
+        "https://lbry.",
+        "https://librarian.",
+        "https://odysee.076.ne.jp/",
+    ];
+
+    const YT_PREFIXES: [&str; 13] = [
+        "https://youtu.be/",
+        // Piped
+        "https://piped.",
+        "https://watch.leptons.xyz/",
+        "https://pi.ggtyler.dev",
+        // Invidious instances generally start with invidious, inv, etc
+        "https://invidious.",
+        "https://inv.",
+        "https://iv.",
+        "https://yt.",
+        "https://yewtu.be/",
+        "https://vid.puffyan.us/",
+        "https://vid.priv.au/",
+        "https://onion.tube/",
+        "https://anontube.lvkaszus.pl/",
+    ];
+
+    const REDDIT_PREFIXES: [&str; 17] = [
+        // Reddit
+        "https://www.reddit.com/",
+        "https://old.reddit.com/",
+        "https://redd.it/",
+        "https://reddit.", // bcz some libreddit & teddit instances start with reddit.
+        // Libreddit
+        "https://libreddit.",
+        "https:://lr.",
+        "https://safereddit.com/",
+        "https://r.walkx.fyi/",
+        "https://l.opnxng.com/",
+        "https://snoo.habedieeh.re/",
+        // Teddit
+        "https://teddit.",
+        "https://snoo.ioens.is/",
+        "https://incogsnoo.com/",
+        "https://rdt.trom.tf/",
+        "https://i.opnxng.com/",
+        "https://td.vern.cc/",
+        "https://t.sneed.network/",
+    ];
+
+    const TWATTER_PREFIXES: [&str; 13] = [
+        "https://x.com/",
+        "https://www.x.com/",
+        "https://mobile.x.com/",
+        "https://twitter.com/",
+        "https://www.twitter.com/",
+        "https://mobile.twitter.com/",
+        // Nitter
+        "https://nitter.",
+        "https://nt.",
+        "https://n.",
+        "https://twiiit.com/",
+        "https://tweet.lambda.dance/",
+        "https://bird.habedieeh.re/",
+        "https://t.com.sb/",
+    ];
+
+    const DOODSTREAM_PREFIXES: [&str; 6] = [
+        "https://doodstream.com/",
+        "https://www.doodstream.com/",
+        "https://ds2play.com/",
+        "https://dooood.com/",
+        "https://doods.pro/",
+        "https://dood.",
+    ];
 
     for arg in args().skip(1) {
         no_args = false;
@@ -226,7 +226,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             arg if starts(&REDDIT_PREFIXES, arg) => vid = reddit(arg).await?,
             arg if arg.contains("unofficialbird.com/") || starts(&TWATTER_PREFIXES, arg) => {
-                vid = twatter(arg).await?
+                vid = twatter(arg, &resolution, streaming_link).await?
             }
             arg if starts(&DOODSTREAM_PREFIXES, arg) => {
                 vid = doodstream(arg, streaming_link).await?
@@ -246,10 +246,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
-
-    drop(resolution);
-    drop(vid_codec);
-    drop(audio_codec);
 
     if no_args {
         eprintln!("{RED}No args provided{RESET}\n");
@@ -325,6 +321,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     mpv_args.push(speed.to_string());
                 }
 
+                drop(speed);
+
                 if !audio_arg.is_empty() {
                     mpv_args.push(audio_arg);
                 }
@@ -354,7 +352,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "mp4"
             };
 
-            if let Some(audio_link) = &vid.audio_link {
+            if let Some(audio_link) = vid.audio_link.as_deref() {
                 let audio_ext = if &*vid.audio_codec == "opus" {
                     "opus"
                 } else if vid.audio_codec.starts_with("mp4a") {
@@ -370,12 +368,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     download(&vid, audio_link, " audio", audio_ext, true).await;
 
-                    let vid_title: &str = &format!("{} video.{}", vid.title, vid_ext);
-                    let audio_title: &str = &format!("{} audio.{}", vid.title, audio_ext);
+                    let vid_title = format!("{} video.{}", vid.title, vid_ext).into_boxed_str();
+                    let audio_title = format!("{} audio.{}", vid.title, audio_ext).into_boxed_str();
 
                     if Command::new("ffmpeg")
-                        .args(["-i", vid_title])
-                        .args(["-i", audio_title])
+                        .args(["-i", &vid_title])
+                        .args(["-i", &audio_title])
                         .args(["-c", "copy"])
                         .arg(format!("{}.mp4", vid.title))
                         .status()
@@ -385,8 +383,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     {
                         println!("\nVideo & audio merged successfully");
 
-                        remove(vid_title, "Failed to remove downloaded video").await;
-                        remove(audio_title, "Failed to remove downloaded audio").await;
+                        remove(&vid_title, "Failed to remove downloaded video").await;
+                        remove(&audio_title, "Failed to remove downloaded audio").await;
                     } else {
                         eprintln!("\n{RED}Video & audio merge failed{RESET}");
                     }

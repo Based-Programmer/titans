@@ -1,4 +1,7 @@
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::reqwests::{client, get_isahc_client},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{from_str, Value};
@@ -10,6 +13,7 @@ pub async fn rokfin(url: &str, resolution: &str) -> Result<Vid, Box<dyn Error>> 
         ..Default::default()
     };
 
+    let client = &client(vid.user_agent, &vid.referrer)?;
     let resp = {
         let id = url
             .trim_start_matches("https://rokfin.com/post/")
@@ -20,7 +24,7 @@ pub async fn rokfin(url: &str, resolution: &str) -> Result<Vid, Box<dyn Error>> 
         let api = format!("https://prod-api-v2.production.rokfin.com/api/v2/public/post/{id}")
             .into_boxed_str();
 
-        get_isahc(&api, vid.user_agent, &vid.referrer).await?
+        get_isahc_client(client, &api).await?
     };
 
     let data: Value = from_str(&resp).expect("Failed to serialize json");
@@ -38,7 +42,7 @@ pub async fn rokfin(url: &str, resolution: &str) -> Result<Vid, Box<dyn Error>> 
     drop(resp);
     drop(data);
 
-    let resp = get_isahc(&m3u8, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc_client(client, &m3u8).await?;
 
     if resolution != "best" {
         let re = Regex::new(&format!(

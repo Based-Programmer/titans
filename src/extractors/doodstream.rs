@@ -1,4 +1,7 @@
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::reqwests::{client, get_isahc_client},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::{error::Error, time::SystemTime};
@@ -15,7 +18,8 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<d
         }
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let client = &client(vid.user_agent, &vid.referrer)?;
+    let resp = get_isahc_client(client, &vid.referrer).await?;
 
     vid.title = {
         static RE_TITLE: Lazy<Regex> =
@@ -31,19 +35,20 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<d
             RE_TOKEN.captures(&resp).expect("Failed to get token")[1].into()
         };
 
-        let link: &str = {
+        let link = {
             static RE_MD5: Lazy<Regex> =
                 Lazy::new(|| Regex::new(r"get\('(/pass_md5/[^']*)").unwrap());
 
-            &format!(
+            format!(
                 "{}{}",
                 BASE_URL,
                 &RE_MD5.captures(&resp).expect("Failed to get pass md5")[1]
             )
+            .into_boxed_str()
         };
 
         drop(resp);
-        let resp = get_isahc(link, vid.user_agent, &vid.referrer).await?;
+        let resp = get_isahc_client(client, &link).await?;
 
         vid.vid_link = format!(
             "{}?{}&expiry={}",
@@ -56,17 +61,17 @@ pub async fn doodstream(url: &str, is_streaming_link: bool) -> Result<Vid, Box<d
         )
         .into();
     } else {
-        let link: &str = {
+        let link = {
             static RE: Lazy<Regex> =
                 Lazy::new(|| Regex::new(r"get\('/pass_md5/([^/]*)/([^']*)").unwrap());
 
             let captures = RE.captures(&resp).expect("Failed to get video link");
 
-            &format!("{}/download/{}/n/{}", BASE_URL, &captures[2], &captures[1])
+            format!("{}/download/{}/n/{}", BASE_URL, &captures[2], &captures[1]).into_boxed_str()
         };
 
         drop(resp);
-        let resp = get_isahc(link, vid.user_agent, &vid.referrer).await?;
+        let resp = get_isahc_client(client, &link).await?;
 
         static RE_LINK: Lazy<Regex> =
             Lazy::new(|| Regex::new(r#"(https://[^.]*\.video-delivery\.net/[^"']*)"#).unwrap());

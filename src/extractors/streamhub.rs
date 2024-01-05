@@ -4,8 +4,9 @@ use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn streamhub(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
-    const BASE_URL: &str = "streamhub.top/";
+pub async fn streamhub(url: &str, _streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
+    const BASE_URL: &str = "streamhub.to";
+    const STREAM_URL: &str = "streamhub.top";
 
     let mut vid = {
         let path = url.trim_end_matches('/').rsplit_once('/').unwrap().1;
@@ -22,23 +23,28 @@ pub async fn streamhub(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn E
     vid.title = RE_TITLE.captures(&resp).unwrap()[1].into();
 
     static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"\|height\|width\|([^|]*).*?urlset\|([^|]*).*?([^|]*)?\|hls").unwrap()
+        Regex::new(r"\|vjsplayer\|data\|(.*?)\|(.*?)\|.*?\|chromecast\|(.*?)\|(.*?)\|(.*?)\|.*?\|sp\|(.*?)\|(.*?)\|m3u8\|master\|(.*?)\|(.*?)\|").unwrap()
     });
     let captures = RE.captures(&resp).expect("Failed to get video link");
 
-    vid.vid_link = {
-        if streaming_link {
-            format!(
-                "https://{}.{}hls/{}{}/index-v1-a1.m3u8",
-                &captures[1], BASE_URL, &captures[3], &captures[2]
-            )
-        } else {
-            format!(
-                "https://{}.{}{}{}/",
-                &captures[1], BASE_URL, &captures[3], &captures[2]
-            )
-        }
-    }
+    let t = match &captures[7].split_once('|') {
+        Some(val) => format!("{}-{}", val.1, val.0),
+        None => captures[7].to_owned(),
+    };
+
+    vid.vid_link = format!(
+        "https://{}.{}/{}/{}/{}/{}/index-v1-a1.m3u8?t={}&s={}&e={}&f={}&i=0.0&sp=0",
+        &captures[5],
+        STREAM_URL,
+        &captures[9],
+        &captures[4],
+        &captures[3],
+        &captures[8],
+        t,
+        &captures[1],
+        &captures[6],
+        &captures[2]
+    )
     .into();
 
     Ok(vid)

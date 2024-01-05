@@ -1,4 +1,7 @@
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::reqwests::{client, get_isahc_client},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -10,9 +13,10 @@ pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
         ..Default::default()
     };
 
+    let client = &client(vid.user_agent, &vid.referrer)?;
     let resp = {
         let json_url = format!("{}.json", vid.referrer);
-        get_isahc(&json_url, vid.user_agent, &json_url).await?
+        get_isahc_client(client, &json_url).await?
     };
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)", ""#).unwrap());
@@ -44,8 +48,9 @@ pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
 
         dash_link.replacen("DASHPlaylist.mpd", best_video, 1).into()
     };
+
     drop(resp);
-    let resp = get_isahc(&dash_link, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc_client(client, &dash_link).await?;
 
     vid.audio_link = if resp.contains("<BaseURL>DASH_audio.mp4</BaseURL>") {
         Some(

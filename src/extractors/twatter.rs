@@ -1,7 +1,13 @@
 use crate::{helpers::unescape_html_chars::unescape_html_chars, Vid};
-use isahc::{AsyncReadResponseExt, Request, RequestExt};
+use isahc::{
+    config::{Configurable, VersionNegotiation},
+    AsyncReadResponseExt, HttpClient, Request,
+};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde_json::{from_str, json, Value};
 use std::{
+    env::consts::OS,
     error::Error,
     fs::{read_to_string, File},
     io::prelude::*,
@@ -9,23 +15,35 @@ use std::{
 };
 use url::{form_urlencoded::byte_serialize, Url};
 
-pub async fn twatter(url: &str) -> Result<Vid, Box<dyn Error>> {
+pub async fn twatter(
+    url: &str,
+    resolution: &str,
+    streaming_link: bool,
+) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
         referrer: format!("https://twitter.com{}", Url::parse(url)?.path()).into(),
         ..Default::default()
     };
 
-    let guest_token = match read_to_string("/tmp/twatter_guest_token") {
+    let client = HttpClient::new()?;
+
+    let tmp_path = if OS == "android" {
+        "/data/data/com.termux/files/usr/tmp/twatter_guest_token"
+    } else {
+        "/tmp/twatter_guest_token"
+    };
+
+    let guest_token = match read_to_string(tmp_path) {
         Ok(token) => {
             let (last_time, gt) = token.split_once(' ').unwrap();
 
             if current_time()? - last_time.parse::<u64>().unwrap() <= 3600 {
                 gt.into()
             } else {
-                fetch_guest_token(&vid).await?
+                fetch_guest_token(&client, &vid, tmp_path).await?
             }
         }
-        Err(_) => fetch_guest_token(&vid).await?,
+        Err(_) => fetch_guest_token(&client, &vid, tmp_path).await?,
     };
 
     let data: Value = {
@@ -78,16 +96,15 @@ pub async fn twatter(url: &str) -> Result<Vid, Box<dyn Error>> {
     ).into()
         };
 
-        let resp = Request::get(&*api)
+        let req = Request::get(&*api)
         .header("user-agent", vid.user_agent)
-        .header("referer", &*vid.referrer)
         .header("content-type", "application/json")
         .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
         .header("x-guest-token", &*guest_token)
-        .body(()).unwrap()
-        .send_async().await.unwrap()
-        .text().await.unwrap()
-        .into_boxed_str();
+        .version_negotiation(VersionNegotiation::http2())
+        .body(())?;
+
+        let resp = client.send_async(req).await?.text().await?.into_boxed_str();
 
         drop(guest_token);
 
@@ -107,41 +124,91 @@ pub async fn twatter(url: &str) -> Result<Vid, Box<dyn Error>> {
         vid.title = unescape_html_chars(title);
     }
 
-    vid.vid_link = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]["media"][0]
-        ["video_info"]["variants"]
-        .as_array()
-        .expect("Failed to convert variants to array")
-        .iter()
-        .max_by_key(|variant| {
-            variant["bitrate"]
-                .to_string()
-                .parse::<u32>()
-                .unwrap_or_default()
-        })
-        .map(|variant| {
-            variant["url"]
-                .as_str()
-                .expect("Failed to get url from the json")
-        })
-        .expect("Failed to get video link")
-        .into();
+    if !streaming_link {
+        vid.vid_link = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]
+            ["media"][0]["video_info"]["variants"]
+            .as_array()
+            .expect("Failed to convert variants to array")
+            .iter()
+            .max_by_key(|variant| variant["bitrate"].as_u64())
+            .map(|variant| {
+                variant["url"]
+                    .as_str()
+                    .expect("Failed to get url from the json")
+            })
+            .expect("Failed to get video link")
+            .into();
+    } else {
+        let m3u8 = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]["media"][0]
+            ["video_info"]["variants"]
+            .as_array()
+            .expect("Failed to convert variants to array")
+            .iter()
+            .map(|variant| {
+                variant["url"]
+                    .as_str()
+                    .expect("Failed to get url from the json")
+            })
+            .find(|url| url.contains(".m3u8?tag="))
+            .unwrap();
+
+        let req = Request::get(m3u8)
+            .header("user-agent", vid.user_agent)
+            .version_negotiation(VersionNegotiation::http2())
+            .body(())?;
+
+        let resp = client.send_async(req).await?.text().await?.into_boxed_str();
+
+        drop(data);
+
+        if resolution == "best" {
+            vid.vid_link = best_link(&resp);
+        } else {
+            static RE: Lazy<Regex> = Lazy::new(|| {
+                Regex::new("#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]*)x([0-9]*).*\n(.*)").unwrap()
+            });
+
+            for captures in RE.captures_iter(&resp) {
+                if *resolution == captures[2] || {
+                    *resolution == captures[1] && resolution == "480"
+                } {
+                    vid.vid_link = format!("https://video.twimg.com{}", &captures[3]).into();
+                    break;
+                }
+            }
+
+            if vid.vid_link.is_empty() {
+                vid.vid_link = best_link(&resp)
+            }
+        }
+    }
 
     Ok(vid)
 }
 
-async fn fetch_guest_token(vid: &Vid) -> Result<Box<str>, Box<dyn Error>> {
+fn best_link(resp: &str) -> Box<str> {
+    format!(
+        "https://video.twimg.com{}",
+        resp.lines().last().expect("Failed to get last line")
+    )
+    .into()
+}
+
+async fn fetch_guest_token(
+    client: &HttpClient,
+    vid: &Vid,
+    tmp_path: &str,
+) -> Result<Box<str>, Box<dyn Error>> {
     let guest_token = {
         const TWATTER_GUEST_TOKEN_API: &str = "https://api.twitter.com/1.1/guest/activate.json";
 
-        let resp = Request::post(TWATTER_GUEST_TOKEN_API)
+        let req = Request::post(TWATTER_GUEST_TOKEN_API)
         .header("user-agent", vid.user_agent)
         .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
-        .body(())?
-        .send_async()
-        .await?
-        .text()
-        .await?
-        .into_boxed_str();
+        .version_negotiation(VersionNegotiation::http2())
+        .body(())?;
+
+        let resp = client.send_async(req).await?.text().await?.into_boxed_str();
 
         let data: Value = from_str(&resp).expect("Failed to serialize guest token json");
 
@@ -154,7 +221,7 @@ async fn fetch_guest_token(vid: &Vid) -> Result<Box<str>, Box<dyn Error>> {
     {
         let current_time = current_time()?;
 
-        match File::create("/tmp/twatter_guest_token") {
+        match File::create(tmp_path) {
             Ok(mut file) => file
                 .write_all(format!("{current_time} {guest_token}").as_bytes())
                 .expect("Failed to write file"),
