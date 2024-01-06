@@ -75,7 +75,7 @@ titans -h
 
 ## Optimal Dependencies
 
-- mpv (Streaming video)
+- mpv or mpv-android (Streaming video)
 - aria2 (for downloading)
 - ffmpeg (merging downloaded video & audio)
 
