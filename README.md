@@ -4,8 +4,6 @@ Blazingly fast scraper
 
 # Install
 
-#### Linux/Mac
-
 - Get the binary from the [release page](https://github.com/Based-Programmer/titans/releases)
 
 - Build
