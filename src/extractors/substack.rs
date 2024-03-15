@@ -1,15 +1,18 @@
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::{reqwests::get_isahc, unescape_html_chars::unescape_html_chars},
+    Vid,
+};
 use std::error::Error;
 
-pub async fn substack(url: &str) -> Result<Vid, Box<dyn Error>> {
+pub fn substack(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: url.into(),
+        referrer: format!("https://{}", url).into(),
         ..Default::default()
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;
 
-    vid.title = splitter(&resp, r#"\"title\":\""#, "title").into();
+    vid.title = unescape_html_chars(splitter(&resp, r#"\"title\":\""#, "title"));
 
     if let Some(audio_split) = resp.split_once("<audio src=\"") {
         vid.audio_link = Some(audio_split.1.split_once('"').unwrap().0.into());

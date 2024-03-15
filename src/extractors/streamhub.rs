@@ -4,7 +4,7 @@ use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn streamhub(url: &str, _streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
+pub fn streamhub(url: &str, _streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     const BASE_URL: &str = "streamhub.to";
     const STREAM_URL: &str = "streamhub.top";
 
@@ -17,7 +17,7 @@ pub async fn streamhub(url: &str, _streaming_link: bool) -> Result<Vid, Box<dyn 
         }
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(" *<h4>(.*?)</h4>").unwrap());
     vid.title = RE_TITLE.captures(&resp).unwrap()[1].into();

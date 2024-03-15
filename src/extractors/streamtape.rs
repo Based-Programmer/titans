@@ -1,24 +1,31 @@
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::{reqwests::get_isahc, unescape_html_chars::unescape_html_chars},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
 use url::Url;
 
-pub async fn streamtape(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
+pub fn streamtape(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: format!("https://streamtape.xyz{}", Url::parse(url)?.path()).into(),
+        referrer: format!(
+            "https://streamtape.net{}",
+            Url::parse(&format!("https://{}", url))?.path()
+        )
+        .into(),
         ..Default::default()
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;
 
     static RE_TITLE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"<meta name="og:title" content="([^"]*)"#).unwrap());
-    vid.title = RE_TITLE.captures(&resp).unwrap()[1].into();
+    vid.title = unescape_html_chars(&RE_TITLE.captures(&resp).unwrap()[1]);
 
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
-            r#"<div id="(no)?robotlink".*?/(streamtape\.xyz/.*?)&token[\s\S]*?(&token=[^']*)"#,
+            r#"<div id="(no)?robotlink".*?/(streamtape\.net/.*?)&token[\s\S]*?(&token=[^']*)"#,
         )
         .unwrap()
     });

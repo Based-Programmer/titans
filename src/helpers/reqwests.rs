@@ -2,25 +2,31 @@ use isahc::{
     config::{RedirectPolicy::Follow, VersionNegotiation},
     error::Error,
     prelude::Configurable,
-    AsyncReadResponseExt, HttpClient, Request, RequestExt,
+    HttpClient, ReadResponseExt, Request, RequestExt,
 };
+use serde_json::Value;
 
-pub async fn get_isahc(link: &str, user_agent: &str, referrer: &str) -> Result<Box<str>, Error> {
+pub fn get_isahc(link: &str, user_agent: &str, referrer: &str) -> Result<Box<str>, Error> {
     Ok(Request::get(link)
         .header("user-agent", user_agent)
         .header("referer", referrer)
         .version_negotiation(VersionNegotiation::http2())
         .redirect_policy(Follow)
         .body(())?
-        .send_async()
-        .await?
-        .text()
-        .await?
+        .send()?
+        .text()?
         .into())
 }
 
-pub async fn get_isahc_client(client: &HttpClient, link: &str) -> Result<Box<str>, Error> {
-    Ok(client.get_async(link).await?.text().await?.into())
+pub fn get_isahc_client(client: &HttpClient, link: &str) -> Result<Box<str>, Error> {
+    Ok(client.get(link)?.text()?.into())
+}
+
+pub fn get_isahc_json(
+    client: &HttpClient,
+    link: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    Ok(client.get(link)?.json()?)
 }
 
 pub fn client(user_agent: &str, referrer: &str) -> Result<HttpClient, Error> {

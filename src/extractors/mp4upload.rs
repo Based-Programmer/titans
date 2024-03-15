@@ -4,23 +4,17 @@ use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn mp4upload(url: &str) -> Result<Vid, Box<dyn Error>> {
+pub fn mp4upload(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = {
-        static RE_LINK: Lazy<Regex> = Lazy::new(|| {
-            Regex::new(r"https://(www\.)?mp4upload\.com/(embed-)?([^.]*\.html)").unwrap()
-        });
+        let id = url.rsplit_once('/').unwrap().1.trim_start_matches("embed-");
 
         Vid {
-            referrer: format!(
-                "https://www.mp4upload.com/embed-{}",
-                &RE_LINK.captures(url).expect("Invalid url")[3]
-            )
-            .into(),
+            referrer: format!("https://www.mp4upload.com/embed-{}", id).into(),
             ..Default::default()
         }
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;
 
     static RE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"src: "(https://[^.]*\.mp4upload\.com/files/[^"]*)"#).unwrap());

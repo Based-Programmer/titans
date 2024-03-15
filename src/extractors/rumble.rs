@@ -1,22 +1,22 @@
-use std::error::Error;
-
 use crate::{
-    helpers::reqwests::{client, get_isahc_client},
-    Vid,
+    helpers::{reqwests::*, unescape_html_chars::unescape_html_chars},
+    Vid, RED, RESET, YELLOW,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde_json::{Map, Value};
+use std::error::Error;
 
-pub async fn rumble(url: &str) -> Result<Vid, Box<dyn Error>> {
+pub fn rumble(url: &str, resolution: u16) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
         user_agent: "Mozilla/5.0 FurryFox",
-        referrer: url.into(),
+        referrer: format!("https://{}", url).into(),
         ..Default::default()
     };
 
     let client = &client(vid.user_agent, &vid.referrer)?;
-    let resp = {
-        let resp = get_isahc_client(client, url).await?;
+    let data: Value = {
+        let resp = get_isahc_client(client, &vid.referrer)?;
 
         static RE_ID: Lazy<Regex> = Lazy::new(|| {
             Regex::new(r#"href="https://rumble.com/api/Media/oembed.json\?url=https%3A%2F%2Frumble.com%2Fembed%2F(.*?)%2F""#).unwrap()
@@ -24,38 +24,69 @@ pub async fn rumble(url: &str) -> Result<Vid, Box<dyn Error>> {
         let id_link = format!(
             "https://rumble.com/embedJS/u3/?request=video&ver=2&v={}",
             &RE_ID.captures(&resp).expect("Failed to get id")[1]
-        );
+        )
+        .into_boxed_str();
         drop(resp);
 
-        get_isahc_client(client, &id_link).await?
+        get_isahc_json(client, &id_link)?
     };
 
-    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title":"([^"]*)"#).unwrap());
-    vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1].into();
+    vid.title = unescape_html_chars(data["title"].as_str().expect("Failed to get title"));
 
-    if resp.contains(r#""mp4":{"#) || resp.contains(r#""webm":{"#) {
-        static RE_VID_MP4: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"\{"url":"([^"]*)","meta":\{"bitrate":([0-9]*)"#).unwrap());
+    if let Some(qualities) = data["ua"]["mp4"].as_object() {
+        (vid.vid_link, vid.resolution) = get_vid_url(&data, qualities, resolution, "mp4");
+    } else if let Some(qualities) = data["ua"]["webm"].as_object() {
+        (vid.vid_link, vid.resolution) = get_vid_url(&data, qualities, resolution, "webm");
+    } else if let Some(url) = data["u"]["hls"]["url"].as_str() {
+        let url: Box<str> = url.into();
+        drop(data);
 
-        vid.vid_link = RE_VID_MP4
-            .captures_iter(&resp)
-            .max_by_key(|cap| cap[2].parse::<u32>().expect("Failed to parse quality"))
-            .map(|cap| cap[1].into())
-            .unwrap()
-    } else {
-        static RE_VID_HLS: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r#"\{"hls":\{"url":"([^"]*)"#).unwrap());
+        let resp = get_isahc_client(client, &url)?;
+        let mut last_line = String::new();
 
-        let url: Box<str> = RE_VID_HLS
-            .captures(&resp)
-            .expect("Failed to get the hls link too")[1]
-            .into(); // to drop resp
+        for line in resp.lines() {
+            if line.ends_with(&format!("_{resolution}p/chunklist.m3u8")) {
+                vid.vid_link = line.into();
+                vid.resolution = Some(resolution);
+                break;
+            }
+            last_line = line.to_owned();
+        }
 
-        drop(resp);
-        let resp = get_isahc_client(client, &url).await?;
-
-        vid.vid_link = resp.lines().last().unwrap().into();
+        if vid.vid_link.is_empty() {
+            vid.vid_link = last_line.into();
+        }
     }
 
     Ok(vid)
+}
+
+fn get_vid_url(
+    data: &Value,
+    qualities: &Map<String, Value>,
+    resolution: u16,
+    vid_format: &str,
+) -> (Box<str>, Option<u16>) {
+    let mut vid_quality: u16 = 0;
+
+    for (quality, _) in qualities {
+        match quality.parse() {
+            Ok(quality) => {
+                if quality == resolution {
+                    vid_quality = resolution;
+                    break;
+                } else if quality > vid_quality {
+                    vid_quality = quality;
+                }
+            }
+            Err(_) => eprintln!("{RED}Couldn't parse quality:{YELLOW} {quality}{RESET}"),
+        }
+    }
+
+    let vid_link = data["ua"][vid_format][vid_quality.to_string()]["url"]
+        .as_str()
+        .expect("Couldn't get vid url")
+        .into();
+
+    (vid_link, Some(vid_quality))
 }

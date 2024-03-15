@@ -1,20 +1,23 @@
 use crate::Vid;
-use isahc::{AsyncReadResponseExt, Request, RequestExt, config::{Configurable, VersionNegotiation}};
-use serde_json::{json, to_string, Value};
+use isahc::{
+    config::{Configurable, VersionNegotiation},
+    ReadResponseExt, Request, RequestExt,
+};
+use serde_json::{from_str, json, to_string, Value};
 use std::{error::Error, process::exit};
 
 const RED: &str = "\u{1b}[31m";
 const RESET: &str = "\u{1b}[0m";
 
-pub async fn youtube(
+pub fn youtube(
     url: &str,
-    resolution: &str,
+    resolution: u16,
     mut vid_codec: &str,
     mut audio_codec: &str,
     is_dash: bool,
 ) -> Result<Vid, Box<dyn Error>> {
     let id = url
-        .rsplit_once("/watch?v=")
+        .rsplit_once("v=")
         .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
         .1
         .rsplit(|delimiter| delimiter == '?' || delimiter == '&')
@@ -23,25 +26,32 @@ pub async fn youtube(
 
     let mut vid = Vid {
         user_agent: "com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip",
-        referrer: format!("https://m.youtube.com/watch?v={}", id).into(),
+        referrer: format!("https://www.youtube.com/watch?v={}", id).into(),
         ..Default::default()
     };
 
     let data: Value = {
         let resp = {
+            const CLIENT_VERSION: &str = "18.48.37";
+
             let json = {
                 let json_value = json!({
                 "context": {
                     "client": {
-                        "androidSdkVersion": 30,
+                        "androidSdkVersion": 34,
                         "clientName": "ANDROID",
-                        "clientVersion": "17.31.35",
+                        "clientVersion": CLIENT_VERSION,
                         "clientScreen": "WATCH",
-                        "gl": "US",
+                        "gl": "IN",
                         "hl": "en",
+                        "utcOffsetMinutes": 0,
                         "osName": "Android",
-                        "osVersion": "11",
+                        "osVersion": "14",
                         "platform": "MOBILE"
+                    },
+                    "request": {
+                        "internalExperimentFlags": [],
+                        "useSsl": true
                     },
                     "user": {
                         "lockedSafetyMode": false
@@ -51,11 +61,7 @@ pub async fn youtube(
                     }
                 },
                 "videoId": id,
-                "playbackContext": {
-                    "contentPlaybackContext": {
-                        "signatureTimestamp": 19250
-                    }
-                },
+                "cpn": "XkQAv5c26hv4qzip",
                 "racyCheckOk": true,
                 "contentCheckOk": true,
                 "params": "CgIQBg"
@@ -64,20 +70,19 @@ pub async fn youtube(
                 to_string(&json_value)?.into_boxed_str()
             };
 
-            Request::post("https://m.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
+            Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
             .header("user-agent", vid.user_agent)
             .header("referer", &*vid.referrer)
             .header("content-type", "application/json")
             .header("x-youtube-client-name", "ANDROID")
-            .header("x-youtube-client-version", "17.31.35")
-            .version_negotiation(VersionNegotiation::http2())    
+            .header("x-youtube-client-version", CLIENT_VERSION)
+            .version_negotiation(VersionNegotiation::http2())
             .body(&*json)?
-            .send_async().await?
-            .text().await?
-            .into_boxed_str()
+            .send()?
+            .text()?
         };
 
-        serde_json::from_str(&resp).expect("Failed to derive json")
+        from_str(&resp).expect("Failed to derive json")
     };
 
     vid_codec = match vid_codec {
@@ -105,7 +110,7 @@ pub async fn youtube(
                     vid.vid_link = url.into();
                     vid.vid_codec = vid_codec.into();
                     vid.audio_codec = audio_codec.into();
-                    vid.resolution = Some(quality.into());
+                    vid.resolution = Some(quality);
 
                     break;
                 }
@@ -124,7 +129,7 @@ pub async fn youtube(
             for format in formats {
                 let (codec, quality, url, bitrate) = vid_data(format)?;
 
-                if codec.starts_with(vid_codec) && { bitrate > bt_video || quality == resolution } {
+                if codec.starts_with(vid_codec) && (bitrate > bt_video || quality == resolution) {
                     v_link = url;
                     v_codec = codec;
                     res = quality;
@@ -139,7 +144,7 @@ pub async fn youtube(
             vid.vid_link = v_link.into();
             vid.audio_codec = a_codec.into();
             vid.audio_link = Some(a_link.into());
-            vid.resolution = Some(res.into());
+            vid.resolution = Some(res);
             vid.vid_codec = v_codec.into();
         }
     }
@@ -151,7 +156,7 @@ pub async fn youtube(
     Ok(vid)
 }
 
-fn vid_data(format: &Value) -> Result<(&str, &str, &str, u32), Box<dyn Error>> {
+fn vid_data(format: &Value) -> Result<(&str, u16, &str, u64), Box<dyn Error>> {
     let codec = format["mimeType"]
         .as_str()
         .expect("Failed to get mimeType")
@@ -176,24 +181,25 @@ fn vid_data(format: &Value) -> Result<(&str, &str, &str, u32), Box<dyn Error>> {
             .unwrap_or_default()
             .split_once('p')
             .unwrap_or_default()
-            .0;
+            .0
+            .parse()
+            .unwrap_or_default();
 
         let url = format["url"].as_str().expect("Failed to get url");
 
         let bitrate = format["bitrate"]
             .as_u64()
-            .expect("Failed to convert bitrate into a number")
-            .try_into()?;
+            .expect("Failed to convert bitrate into a number");
 
         (quality, url, bitrate)
     } else {
-        ("", "", 0)
+        (0, "", 0)
     };
 
     Ok((codec, quality, url, bitrate))
 }
 
-fn exit_if_empty<T>(formats: &Vec<T>) {
+fn exit_if_empty<T>(formats: &[T]) {
     if formats.is_empty() {
         eprintln!("{}No result{}", RED, RESET);
         exit(1);

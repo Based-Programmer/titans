@@ -4,7 +4,7 @@ use crate::{helpers::reqwests::get_isahc, Vid};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn vtube(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
+pub fn vtube(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     const BASE_URL: &str = "vtube.network/";
 
     let mut vid = Vid {
@@ -12,7 +12,7 @@ pub async fn vtube(url: &str, is_streaming_link: bool) -> Result<Vid, Box<dyn Er
         ..Default::default()
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;
 
     static RE_TITLE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"<h3 class="h4 mb-4 text-center">(.*)</h3>"#).unwrap());

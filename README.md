@@ -4,6 +4,8 @@ Blazingly fast scraper
 
 # Install
 
+#### Linux/Mac
+
 - Get the binary from the [release page](https://github.com/Based-Programmer/titans/releases)
 
 - Build
@@ -81,11 +83,13 @@ titans -h
 
 - [bitchute](https://www.bitchute.com)
 - [doodstream](https://doodstream.com)
+- [libsyn](https://libsyn.com) only play links (https://html5-player.libsyn.com/episode/id/[0-9]*) as of now
 - [mp4upload](https://www.mp4upload.com)
 - [odysee](https://odysee.com)
 - [reddit](https://www.reddit.com)
-- [rokfin](https://rokfin.com)
+- [rokfin](https://rokfin.com) videos only (not bites & live streams)
 - [rumble](https://rumble.com)
+- [spotify](https://www.spotify.com) only open links like embedded podcasts
 - [streamdav](https://streamdav.com)
 - [streamhub](https://streamhub.to)
 - [streamtape](https://streamtape.xyz)

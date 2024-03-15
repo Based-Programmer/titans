@@ -7,16 +7,16 @@ use regex::Regex;
 use serde_json::{from_str, Value};
 use std::error::Error;
 
-pub async fn rokfin(url: &str, resolution: &str) -> Result<Vid, Box<dyn Error>> {
+pub fn rokfin(url: &str, resolution: u16) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: url.into(),
+        referrer: format!("https://{}", url).into(),
         ..Default::default()
     };
 
     let client = &client(vid.user_agent, &vid.referrer)?;
     let resp = {
         let id = url
-            .trim_start_matches("https://rokfin.com/post/")
+            .trim_start_matches("rokfin.com/post/")
             .split_once('/')
             .unwrap()
             .0;
@@ -24,7 +24,7 @@ pub async fn rokfin(url: &str, resolution: &str) -> Result<Vid, Box<dyn Error>> 
         let api = format!("https://prod-api-v2.production.rokfin.com/api/v2/public/post/{id}")
             .into_boxed_str();
 
-        get_isahc_client(client, &api).await?
+        get_isahc_client(client, &api)?
     };
 
     let data: Value = from_str(&resp).expect("Failed to serialize json");
@@ -42,13 +42,12 @@ pub async fn rokfin(url: &str, resolution: &str) -> Result<Vid, Box<dyn Error>> 
     drop(resp);
     drop(data);
 
-    let resp = get_isahc_client(client, &m3u8).await?;
+    let resp = get_isahc_client(client, &m3u8)?;
 
-    if resolution != "best" {
+    if resolution != 0 {
         let re = Regex::new(&format!(
-        r"#EXT-X-STREAM-INF:.*?,RESOLUTION=[0-9]*x{resolution}[\s\S]*?(https://.*?\.rokfin\.com/.*/rendition\.m3u8.*)"
-    ))
-    .unwrap();
+            r"#EXT-X-STREAM-INF:.*?,RESOLUTION=[0-9]*x{resolution}[\s\S]*?(https://.*?\.rokfin\.com/.*/rendition\.m3u8.*)"
+        ))?;
         if let Some(vid_link) = re.captures(&resp) {
             vid.vid_link = vid_link[1].into();
         }

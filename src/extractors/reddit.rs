@@ -7,16 +7,20 @@ use regex::Regex;
 use std::error::Error;
 use url::Url;
 
-pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
+pub fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: format!("https://www.reddit.com{}", Url::parse(url)?.path()).into(),
+        referrer: format!(
+            "https://www.reddit.com{}",
+            Url::parse(&format!("https://{}", url))?.path()
+        )
+        .into(),
         ..Default::default()
     };
 
     let client = &client(vid.user_agent, &vid.referrer)?;
     let resp = {
         let json_url = format!("{}.json", vid.referrer);
-        get_isahc_client(client, &json_url).await?
+        get_isahc_client(client, &json_url)?
     };
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)", ""#).unwrap());
@@ -50,7 +54,7 @@ pub async fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
     };
 
     drop(resp);
-    let resp = get_isahc_client(client, &dash_link).await?;
+    let resp = get_isahc_client(client, &dash_link)?;
 
     vid.audio_link = if resp.contains("<BaseURL>DASH_audio.mp4</BaseURL>") {
         Some(

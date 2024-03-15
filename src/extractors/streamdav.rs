@@ -7,7 +7,7 @@ use crate::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-pub async fn streamdav(url: &str) -> Result<Vid, Box<dyn Error>> {
+pub fn streamdav(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
         referrer: url
             .replacen("streamdav.com/v/", "streamdav.com/e/", 1)
@@ -15,7 +15,7 @@ pub async fn streamdav(url: &str) -> Result<Vid, Box<dyn Error>> {
         ..Default::default()
     };
 
-    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer).await?;
+    let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;
 
     static RE_TITLE: Lazy<Regex> =
         Lazy::new(|| Regex::new(r#"<meta name="og:title" content="(.*)">"#).unwrap());
@@ -25,7 +25,7 @@ pub async fn streamdav(url: &str) -> Result<Vid, Box<dyn Error>> {
         Lazy::new(|| Regex::new(r#"<source src="(.*?)" res="([0-9]*)""#).unwrap());
     vid.vid_link =
         unescape_html_chars(&RE_VID.captures(&resp).expect("Failed to get video link")[1]);
-    vid.resolution = Some(RE_VID.captures(&resp).expect("Failed to get resolution")[2].into());
+    vid.resolution = Some(RE_VID.captures(&resp).expect("Failed to get resolution")[2].parse()?);
 
     Ok(vid)
 }

@@ -1,49 +1,56 @@
-use crate::{helpers::unescape_html_chars::unescape_html_chars, Vid};
+use crate::{
+    helpers::{reqwests::get_isahc_client, unescape_html_chars::unescape_html_chars},
+    Vid, RED, RESET, YELLOW,
+};
 use isahc::{
     config::{Configurable, VersionNegotiation},
-    AsyncReadResponseExt, HttpClient, Request,
+    HttpClient, ReadResponseExt, Request,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_json::{from_str, json, Value};
+use serde_json::{json, to_string, Value};
 use std::{
     env::consts::OS,
     error::Error,
     fs::{read_to_string, File},
     io::prelude::*,
+    process::exit,
     time::{SystemTime, UNIX_EPOCH},
 };
 use url::{form_urlencoded::byte_serialize, Url};
 
-pub async fn twatter(
-    url: &str,
-    resolution: &str,
-    streaming_link: bool,
-) -> Result<Vid, Box<dyn Error>> {
+pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: format!("https://twitter.com{}", Url::parse(url)?.path()).into(),
+        referrer: format!(
+            "https://twitter.com{}",
+            Url::parse(&format!("http://{}", url))?.path()
+        )
+        .into(),
         ..Default::default()
     };
 
     let client = HttpClient::new()?;
 
-    let tmp_path = if OS == "android" {
-        "/data/data/com.termux/files/usr/tmp/twatter_guest_token"
-    } else {
-        "/tmp/twatter_guest_token"
-    };
+    let guest_token = {
+        let tmp_path = if OS == "android" {
+            "/data/data/com.termux/files/usr/tmp/twatter_guest_token"
+        } else {
+            "/tmp/twatter_guest_token"
+        };
 
-    let guest_token = match read_to_string(tmp_path) {
-        Ok(token) => {
-            let (last_time, gt) = token.split_once(' ').unwrap();
+        match read_to_string(tmp_path) {
+            Ok(token) => {
+                let (last_time, gt) = token.split_once(' ').unwrap();
 
-            if current_time()? - last_time.parse::<u64>().unwrap() <= 3600 {
-                gt.into()
-            } else {
-                fetch_guest_token(&client, &vid, tmp_path).await?
+                if current_time()? - last_time.parse::<u64>()? <= 1770 {
+                    gt.into()
+                } else {
+                    drop(token);
+                    fetch_guest_token(&client, &vid, tmp_path)?
+                }
             }
+            Err(_) => fetch_guest_token(&client, &vid, tmp_path)?,
         }
-        Err(_) => fetch_guest_token(&client, &vid, tmp_path).await?,
     };
 
     let data: Value = {
@@ -56,9 +63,9 @@ pub async fn twatter(
 
             let variables = json!({
                 "tweetId": id,
-                "withCommunity":false,
-                "includePromotedContent":false,
-                "withVoice":false
+                "withCommunity": false,
+                "includePromotedContent": false,
+                "withVoice": false
             });
 
             const FEATURES: &str = r#"{
@@ -90,7 +97,7 @@ pub async fn twatter(
 
             format!(
         "https://twitter.com/i/api/graphql/0hWvDhmW8YQ-S_ib3azIrw/TweetResultByRestId?variables={}&features={}&fieldToggles={}",
-        byte_serialize(variables.to_string().as_bytes()).collect::<String>(),
+        byte_serialize(to_string(&variables)?.as_bytes()).collect::<String>(),
         byte_serialize(FEATURES.as_bytes()).collect::<String>(),
         byte_serialize(FIELDS.as_bytes()).collect::<String>(),
     ).into()
@@ -104,12 +111,10 @@ pub async fn twatter(
         .version_negotiation(VersionNegotiation::http2())
         .body(())?;
 
-        let resp = client.send_async(req).await?.text().await?.into_boxed_str();
-
-        drop(guest_token);
-
-        from_str(&resp).expect("Failed to derive json")
+        client.send(req)?.json()?
     };
+
+    drop(guest_token);
 
     {
         let title_data = data["data"]["tweetResult"]["result"]["legacy"]["full_text"]
@@ -139,8 +144,8 @@ pub async fn twatter(
             .expect("Failed to get video link")
             .into();
     } else {
-        let m3u8 = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]["media"][0]
-            ["video_info"]["variants"]
+        let m3u8: Box<str> = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]
+            ["media"][0]["video_info"]["variants"]
             .as_array()
             .expect("Failed to convert variants to array")
             .iter()
@@ -150,35 +155,46 @@ pub async fn twatter(
                     .expect("Failed to get url from the json")
             })
             .find(|url| url.contains(".m3u8?tag="))
-            .unwrap();
-
-        let req = Request::get(m3u8)
-            .header("user-agent", vid.user_agent)
-            .version_negotiation(VersionNegotiation::http2())
-            .body(())?;
-
-        let resp = client.send_async(req).await?.text().await?.into_boxed_str();
+            .unwrap()
+            .into();
 
         drop(data);
 
-        if resolution == "best" {
-            vid.vid_link = best_link(&resp);
-        } else {
+        let resp = get_isahc_client(&client, &m3u8)?;
+
+        if resolution == 0 {
+            match best_link(&resp) {
+                Some(vid_link) => vid.vid_link = vid_link,
+                None => eprintln!("{RED}Failed to get best video link{RESET}"),
+            }
+        }
+
+        if vid.vid_link.is_empty() {
             static RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new("#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]*)x([0-9]*).*\n(.*)").unwrap()
+                Regex::new(
+                    r"#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]*)x([0-9]*).*\n(.*\.m3u8\?container=)",
+                )
+                .unwrap()
             });
 
             for captures in RE.captures_iter(&resp) {
-                if *resolution == captures[2] || {
-                    *resolution == captures[1] && resolution == "480"
-                } {
-                    vid.vid_link = format!("https://video.twimg.com{}", &captures[3]).into();
+                let res_str = resolution.to_string();
+
+                if res_str == captures[1] || res_str == captures[2] {
+                    vid.vid_link = format!("https://video.twimg.com{}fmp4", &captures[3]).into();
                     break;
                 }
             }
 
             if vid.vid_link.is_empty() {
-                vid.vid_link = best_link(&resp)
+                eprintln!("{RED}Failed to get the video link of desired resolution{RESET}");
+
+                if resolution == 0 {
+                    exit(1);
+                } else {
+                    eprintln!("{YELLOW}Trying to get the best video link{RESET}");
+                    vid.vid_link = best_link(&resp).expect("Failed to get best video link")
+                }
             }
         }
     }
@@ -186,15 +202,17 @@ pub async fn twatter(
     Ok(vid)
 }
 
-fn best_link(resp: &str) -> Box<str> {
-    format!(
-        "https://video.twimg.com{}",
-        resp.lines().last().expect("Failed to get last line")
+fn best_link(resp: &str) -> Option<Box<str>> {
+    Some(
+        format!(
+            "https://video.twimg.com{}.m3u8?container=fmp4",
+            resp.lines().last()?.rsplit_once(".m3u8?container=")?.0
+        )
+        .into(),
     )
-    .into()
 }
 
-async fn fetch_guest_token(
+fn fetch_guest_token(
     client: &HttpClient,
     vid: &Vid,
     tmp_path: &str,
@@ -208,11 +226,7 @@ async fn fetch_guest_token(
         .version_negotiation(VersionNegotiation::http2())
         .body(())?;
 
-        let resp = client.send_async(req).await?.text().await?.into_boxed_str();
-
-        let data: Value = from_str(&resp).expect("Failed to serialize guest token json");
-
-        data["guest_token"]
+        client.send(req)?.json::<Value>()?["guest_token"]
             .as_str()
             .expect("Failed to get guest token")
             .into()
@@ -222,9 +236,7 @@ async fn fetch_guest_token(
         let current_time = current_time()?;
 
         match File::create(tmp_path) {
-            Ok(mut file) => file
-                .write_all(format!("{current_time} {guest_token}").as_bytes())
-                .expect("Failed to write file"),
+            Ok(mut file) => file.write_all(format!("{current_time} {guest_token}").as_bytes())?,
             Err(_) => eprintln!("Failed to create file"),
         }
     }
