@@ -4,11 +4,12 @@ Blazingly fast scraper
 
 # Install
 
-#### Linux/Mac
+#### Linux/Windows/Android
 
 - Get the binary from the [release page](https://github.com/Based-Programmer/titans/releases)
 
-- Build
+## Build
+#### Any OS
 
 ````sh
 git clone 'https://github.com/Based-Programmer/titans' && \
