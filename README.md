@@ -45,7 +45,7 @@ export PATH="$CARGO_HOME/bin:$PATH"
 ## Usage
 
 ````
-titans <argument> <url>
+titans <args> <url>
 ````
 
 #### Example
