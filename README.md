@@ -78,7 +78,7 @@ titans -h
 
 - mpv or mpv-android (Streaming video)
 - aria2 (for downloading)
-- ffmpeg (merging downloaded video & audio)
+- ffmpeg (merging downloaded video & audio after download)
 
 ## Supported Sites
 
