@@ -31,29 +31,29 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
 
     let client = HttpClient::new()?;
 
-    let guest_token = {
-        let tmp_path = if OS == "android" {
-            "/data/data/com.termux/files/usr/tmp/twatter_guest_token"
-        } else {
-            "/tmp/twatter_guest_token"
+    let data: Value = {
+        let guest_token = {
+            let tmp_path = if OS == "android" {
+                "/data/data/com.termux/files/usr/tmp/twatter_guest_token"
+            } else {
+                "/tmp/twatter_guest_token"
+            };
+
+            match read_to_string(tmp_path) {
+                Ok(token) => {
+                    let (last_time, gt) = token.split_once(' ').unwrap();
+
+                    if current_time()? - last_time.parse::<u64>()? <= 1770 {
+                        gt.parse()?
+                    } else {
+                        drop(token);
+                        fetch_guest_token(&client, &vid, tmp_path)?
+                    }
+                }
+                Err(_) => fetch_guest_token(&client, &vid, tmp_path)?,
+            }
         };
 
-        match read_to_string(tmp_path) {
-            Ok(token) => {
-                let (last_time, gt) = token.split_once(' ').unwrap();
-
-                if current_time()? - last_time.parse::<u64>()? <= 1770 {
-                    gt.into()
-                } else {
-                    drop(token);
-                    fetch_guest_token(&client, &vid, tmp_path)?
-                }
-            }
-            Err(_) => fetch_guest_token(&client, &vid, tmp_path)?,
-        }
-    };
-
-    let data: Value = {
         let api: Box<str> = {
             let id = vid
                 .referrer
@@ -107,14 +107,12 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
         .header("user-agent", vid.user_agent)
         .header("content-type", "application/json")
         .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
-        .header("x-guest-token", &*guest_token)
+        .header("x-guest-token", guest_token)
         .version_negotiation(VersionNegotiation::http2())
         .body(())?;
 
         client.send(req)?.json()?
     };
-
-    drop(guest_token);
 
     {
         let title_data = data["data"]["tweetResult"]["result"]["legacy"]["full_text"]
@@ -216,11 +214,9 @@ fn fetch_guest_token(
     client: &HttpClient,
     vid: &Vid,
     tmp_path: &str,
-) -> Result<Box<str>, Box<dyn Error>> {
+) -> Result<u64, Box<dyn Error>> {
     let guest_token = {
-        const TWATTER_GUEST_TOKEN_API: &str = "https://api.twitter.com/1.1/guest/activate.json";
-
-        let req = Request::post(TWATTER_GUEST_TOKEN_API)
+        let req = Request::post("https://api.twitter.com/1.1/guest/activate.json")
         .header("user-agent", vid.user_agent)
         .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
         .version_negotiation(VersionNegotiation::http2())
@@ -229,7 +225,7 @@ fn fetch_guest_token(
         client.send(req)?.json::<Value>()?["guest_token"]
             .as_str()
             .expect("Failed to get guest token")
-            .into()
+            .parse()?
     };
 
     {

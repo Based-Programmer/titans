@@ -1,13 +1,11 @@
-use crate::Vid;
+use crate::{Vid, RED, RESET};
+use fastrand::Rng;
 use isahc::{
     config::{Configurable, VersionNegotiation},
     ReadResponseExt, Request, RequestExt,
 };
 use serde_json::{from_str, json, to_string, Value};
 use std::{error::Error, process::exit};
-
-const RED: &str = "\u{1b}[31m";
-const RESET: &str = "\u{1b}[0m";
 
 pub fn youtube(
     url: &str,
@@ -25,62 +23,64 @@ pub fn youtube(
         .unwrap_or_default();
 
     let mut vid = Vid {
-        user_agent: "com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip",
+        user_agent: "com.google.android.youtube/19.11.36 (Linux; U; Android 14) gzip",
         referrer: format!("https://www.youtube.com/watch?v={}", id).into(),
         ..Default::default()
     };
 
     let data: Value = {
-        let resp = {
-            const CLIENT_VERSION: &str = "18.48.37";
+        const CLIENT_VERSION: &str = "19.11.36";
+        const CLIENT_NAME: &str = "ANDROID";
 
-            let json = {
-                let json_value = json!({
-                "context": {
-                    "client": {
-                        "androidSdkVersion": 34,
-                        "clientName": "ANDROID",
-                        "clientVersion": CLIENT_VERSION,
-                        "clientScreen": "WATCH",
-                        "gl": "IN",
-                        "hl": "en",
-                        "utcOffsetMinutes": 0,
-                        "osName": "Android",
-                        "osVersion": "14",
-                        "platform": "MOBILE"
-                    },
-                    "request": {
-                        "internalExperimentFlags": [],
-                        "useSsl": true
-                    },
-                    "user": {
-                        "lockedSafetyMode": false
-                    },
-                    "thirdParty": {
-                        "embedUrl": "https://www.youtube.com/"
-                    }
+        let json = {
+            let rnd = Rng::new();
+            let cpn: String = (0..16).map(|_| rnd.alphanumeric()).collect();
+
+            let json_value = json!({
+            "context": {
+                "client": {
+                    "androidSdkVersion": 34,
+                    "clientName": CLIENT_NAME,
+                    "clientVersion": CLIENT_VERSION,
+                    "clientScreen": "WATCH",
+                    "gl": "IN",
+                    "hl": "en",
+                    "utcOffsetMinutes": 0,
+                    "osName": "Android",
+                    "osVersion": "14",
+                    "platform": "MOBILE"
                 },
-                "videoId": id,
-                "cpn": "XkQAv5c26hv4qzip",
-                "racyCheckOk": true,
-                "contentCheckOk": true,
-                "params": "CgIQBg"
-                });
+                "request": {
+                    "internalExperimentFlags": [],
+                    "useSsl": true
+                },
+                "user": {
+                    "lockedSafetyMode": false
+                },
+                "thirdParty": {
+                    "embedUrl": "https://www.youtube.com/"
+                }
+            },
+            "videoId": id,
+            "cpn": cpn,
+            "racyCheckOk": true,
+            "contentCheckOk": true,
+            "params": "CgIIAQ"
+            });
 
-                to_string(&json_value)?.into_boxed_str()
-            };
+            to_string(&json_value)?.into_boxed_str()
+        };
 
-            Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
+        let resp = Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
             .header("user-agent", vid.user_agent)
             .header("referer", &*vid.referrer)
             .header("content-type", "application/json")
-            .header("x-youtube-client-name", "ANDROID")
+            .header("x-youtube-client-name", CLIENT_NAME)
             .header("x-youtube-client-version", CLIENT_VERSION)
             .version_negotiation(VersionNegotiation::http2())
             .body(&*json)?
             .send()?
-            .text()?
-        };
+            .text()?;
 
         from_str(&resp).expect("Failed to derive json")
     };

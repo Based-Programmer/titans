@@ -239,7 +239,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     } else if starts(&ODYSEE_PREFIXES, arg) {
                         vid = odysee(arg)?;
                     } else if arg.contains("youtube.com/") || starts(&YT_PREFIXES, arg) {
-                        if todo == Todo::Play && resolution == 0 {
+                        if todo == Todo::Play && vid_codec == "avc" && resolution == 0 {
                             resolution = 720;
                         }
                         vid = youtube(arg, resolution, &vid_codec, &audio_codec, is_dash)?;
@@ -316,7 +316,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 audio_arg = format!("--audio-file={}", audio_link)
             }
 
-            if OS == "android" {
+            if OS == "android"
+                && (!audio_only
+                    || !Command::new("sh")
+                        .args(["-c", "command -v mpv"])
+                        .output()?
+                        .status
+                        .success())
+            {
                 let am_mpv_args = [
                     "start",
                     "--user",
