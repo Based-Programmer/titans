@@ -1,24 +1,11 @@
 use isahc::{
     config::{RedirectPolicy::Follow, VersionNegotiation},
-    error::Error,
     prelude::Configurable,
-    HttpClient, ReadResponseExt, Request, RequestExt,
+    Error, HttpClient, ReadResponseExt,
 };
 use serde_json::Value;
 
-pub fn get_isahc(link: &str, user_agent: &str, referrer: &str) -> Result<Box<str>, Error> {
-    Ok(Request::get(link)
-        .header("user-agent", user_agent)
-        .header("referer", referrer)
-        .version_negotiation(VersionNegotiation::http2())
-        .redirect_policy(Follow)
-        .body(())?
-        .send()?
-        .text()?
-        .into())
-}
-
-pub fn get_isahc_client(client: &HttpClient, link: &str) -> Result<Box<str>, Error> {
+pub fn get_isahc(client: &HttpClient, link: &str) -> Result<Box<str>, Error> {
     Ok(client.get(link)?.text()?.into())
 }
 
