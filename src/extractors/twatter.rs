@@ -1,5 +1,7 @@
 use crate::{
-    helpers::{reqwests::get_isahc_client, unescape_html_chars::unescape_html_chars},
+    helpers::{
+        reqwests::get_isahc_client, tmp_path::tmp_path, unescape_html_chars::unescape_html_chars,
+    },
     Vid, RED, RESET, YELLOW,
 };
 use isahc::{
@@ -10,7 +12,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{json, to_string, Value};
 use std::{
-    env::{consts::OS, var},
     error::Error,
     fs::{read_to_string, File},
     io::prelude::*,
@@ -33,13 +34,9 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
 
     let data: Value = {
         let guest_token = {
-            let tmp_path = match OS {
-                "windows" => var("TEMP").unwrap_or(var("TMP")?) + "\\twatter_guest_token",
-                "android" => var("TMPDIR")? + "/twatter_guest_token",
-                _ => String::from("/tmp/twatter_guest_token"),
-            };
+            let tmp_path = tmp_path(true)?.into_boxed_str();
 
-            match read_to_string(&tmp_path) {
+            match read_to_string(&*tmp_path) {
                 Ok(token) => {
                     let (last_time, gt) = token.split_once(' ').unwrap();
 
@@ -233,7 +230,7 @@ fn fetch_guest_token(
 
         match File::create(tmp_path) {
             Ok(mut file) => file.write_all(format!("{current_time} {guest_token}").as_bytes())?,
-            Err(_) => eprintln!("Failed to create file"),
+            Err(_) => eprintln!("{RED}Failed to create file{RESET}"),
         }
     }
 

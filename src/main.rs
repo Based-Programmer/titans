@@ -7,9 +7,9 @@ use extractors::{
     streamdav::streamdav, streamhub::streamhub, streamtape::streamtape, streamvid::streamvid,
     substack::substack, twatter::twatter, vtube::vtube, wolfstream::wolfstream, youtube::youtube,
 };
+
 use once_cell::sync::Lazy;
 use regex::Regex;
-
 use std::{
     env::{args, consts::OS},
     error::Error,
@@ -27,6 +27,7 @@ pub struct Vid {
     resolution: Option<u16>,
     audio_link: Option<Box<str>>,
     audio_codec: Option<Box<str>>,
+    chapter_file: Option<Box<str>>,
 }
 
 impl Default for Vid {
@@ -40,6 +41,7 @@ impl Default for Vid {
             resolution: None,
             audio_link: None,
             audio_codec: None,
+            chapter_file: None,
         }
     }
 }
@@ -69,6 +71,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut vid_codec = String::from("avc");
     let mut audio_codec = String::from("opus");
     let mut speed: f32 = 0.0;
+    /*
     let set_play = |todo: &mut Todo, audio_only: bool, is_dash: &mut bool| {
         *todo = Todo::Play;
 
@@ -76,6 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             *is_dash = false;
         }
     };
+    */
 
     const VTUBE_PREFIXES: [&str; 2] = ["vtbe.to/", "vtube.network/"];
     const SPOTIFY_PREFIXES: [&str; 2] = [
@@ -173,12 +177,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 exit(0);
             }
             "-g" | "--get" => todo = Todo::GetLink,
-            "-p" | "--play" => {
-                set_play(&mut todo, audio_only, &mut is_dash);
-            }
+            "-p" | "--play" => todo = Todo::Play,
             arg if starts(&["-sp=", "--speed="], arg) => {
                 speed = arg.rsplit_once('=').unwrap().1.parse()?;
-                set_play(&mut todo, audio_only, &mut is_dash);
+                todo = Todo::Play;
             }
             "-a" | "--audio-only" => audio_only = true,
             "-l" | "--loop" => loop_file = true,
@@ -186,7 +188,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 audio_only = true;
                 loop_file = true;
                 speed = 1.0;
-                set_play(&mut todo, audio_only, &mut is_dash);
+                todo = Todo::Play;
             }
             "-d" | "--download" => {
                 todo = Todo::Download;
@@ -194,10 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             "-D" | "--dl_link" => streaming_link = false,
             "-s" | "--stream_link" => streaming_link = true,
-            "-c" | "--combined" => {
-                is_dash = false;
-                resolution = 720;
-            }
+            "-c" | "--combined" => is_dash = false,
             "-b" | "--best" => resolution = 0,
             arg if starts(&["-r=", "--resolution="], arg) => {
                 resolution = arg
@@ -241,9 +240,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     } else if starts(&ODYSEE_PREFIXES, arg) {
                         vid = odysee(arg)?;
                     } else if arg.contains("youtube.com/") || starts(&YT_PREFIXES, arg) {
-                        if todo == Todo::Play && vid_codec == "avc" && resolution == 0 {
-                            resolution = 720;
-                        }
                         vid = youtube(arg, resolution, &vid_codec, &audio_codec, is_dash)?;
                     } else if starts(&REDDIT_PREFIXES, arg) {
                         vid = reddit(arg)?;
@@ -345,24 +341,34 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 };
 
-                let mut mpv_args = vec![
-                    vid.vid_link.to_string(),
-                    format!("--force-media-title={}", vid.title),
-                    format!("--user-agent={}", vid.user_agent),
-                    format!("--referrer={}", vid.referrer),
-                ];
+                let args = {
+                    let mut mpv_args = vec![
+                        vid.vid_link.to_string(),
+                        format!("--force-media-title={}", vid.title),
+                        format!("--user-agent={}", vid.user_agent),
+                        format!("--referrer={}", vid.referrer),
+                    ];
 
-                if speed != 0.0 {
-                    mpv_args.push(format!("--speed={}", speed));
-                }
+                    if speed != 0.0 {
+                        mpv_args.push(format!("--speed={}", speed));
+                    }
 
-                if loop_file {
-                    mpv_args.push(String::from("--loop-file"));
-                }
+                    if loop_file {
+                        mpv_args.push(String::from("--loop-file"));
+                    }
 
-                if !audio_arg.is_empty() {
-                    mpv_args.push(audio_arg);
-                }
+                    if !audio_arg.is_empty() {
+                        mpv_args.push(audio_arg);
+                    }
+
+                    if let Some(chapters) = vid.chapter_file {
+                        mpv_args.push(format!("--chapters-file={}", chapters));
+                    }
+
+                    mpv_args.into_boxed_slice()
+                };
+
+                let mpv_args = args.iter();
 
                 if !audio_only {
                     Command::new(mpv)
@@ -388,6 +394,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "mp4"
             };
 
+            let chapter = if vid.chapter_file.is_some() {
+                " without chapters"
+            } else {
+                ""
+            };
+
+            let no_emoji = remove_emojis(&vid.title);
+
             if let Some(audio_link) = vid.audio_link.as_deref() {
                 let audio_ext = if some_codec_matches(&vid.audio_codec, "opus", false) {
                     "opus"
@@ -398,37 +412,126 @@ fn main() -> Result<(), Box<dyn Error>> {
                 };
 
                 if audio_only {
-                    download(&vid, &vid.title, audio_link, " audio", audio_ext, false);
+                    download(
+                        &vid, &no_emoji, audio_link, " audio", audio_ext, false, chapter,
+                    );
+
+                    if let Some(chapters) = vid.chapter_file {
+                        let audio_title =
+                            format!("{} audio{}.{}", no_emoji, chapter, audio_ext).into_boxed_str();
+
+                        drop(no_emoji);
+
+                        if Command::new("ffmpeg")
+                            .args(["-i", &audio_title])
+                            .args(["-i", &chapters])
+                            .args(["-c", "copy"])
+                            .args(["-y".to_owned(), format!("{}.{}", vid.title, audio_ext)])
+                            .output()
+                            .expect("Failed to execute ffmpeg")
+                            .status
+                            .success()
+                        {
+                            println!("{YELLOW}\nAudio & Chapters merged successfully{RESET}");
+                            remove(&audio_title, "Failed to remove downloaded audio");
+                        } else {
+                            eprintln!("\n{RED}Audio & Chapters merge failed{RESET}");
+                        }
+                    }
                 } else {
-                    let no_emoji = remove_emojis(&vid.title);
+                    download(
+                        &vid,
+                        &no_emoji,
+                        &vid.vid_link,
+                        " video",
+                        vid_ext,
+                        true,
+                        chapter,
+                    );
+                    download(
+                        &vid, &no_emoji, audio_link, " audio", audio_ext, true, chapter,
+                    );
 
-                    download(&vid, &no_emoji, &vid.vid_link, " video", vid_ext, true);
-                    download(&vid, &no_emoji, audio_link, " audio", audio_ext, true);
+                    let vid_title =
+                        format!("{} video{}.{}", no_emoji, chapter, vid_ext).into_boxed_str();
+                    let audio_title =
+                        format!("{} audio{}.{}", no_emoji, chapter, audio_ext).into_boxed_str();
 
-                    let vid_title = format!("{} video.{}", no_emoji, vid_ext).into_boxed_str();
-                    let audio_title = format!("{} audio.{}", no_emoji, audio_ext).into_boxed_str();
                     drop(no_emoji);
+
+                    let mut chapter_name = "";
+
+                    let ffmpeg_args = {
+                        let mut args = Vec::new();
+
+                        if let Some(chapters) = vid.chapter_file {
+                            args.push("-i".to_owned());
+                            args.push(chapters.into_string());
+
+                            chapter_name = " + Chapters";
+                        }
+
+                        args.push("-c".to_owned());
+                        args.push("copy".to_owned());
+
+                        args.push("-y".to_owned());
+                        args.push(format!("{}.{}", vid.title, vid_ext));
+
+                        args.into_boxed_slice()
+                    };
 
                     if Command::new("ffmpeg")
                         .args(["-i", &vid_title])
                         .args(["-i", &audio_title])
-                        .args(["-c", "copy"])
-                        .arg(format!("{}.mp4", vid.title))
+                        .args(ffmpeg_args.iter())
                         .output()
                         .expect("Failed to execute ffmpeg")
                         .status
                         .success()
                     {
-                        println!("\nVideo & audio merged successfully");
+                        println!(
+                            "{YELLOW}\nVideo + Audio{chapter_name} merged successfully{RESET}"
+                        );
 
                         remove(&vid_title, "Failed to remove downloaded video");
                         remove(&audio_title, "Failed to remove downloaded audio");
                     } else {
-                        eprintln!("\n{RED}Video & audio merge failed{RESET}");
+                        eprintln!("\n{RED}Video + Audio{chapter_name} merge failed{RESET}");
                     }
                 }
             } else {
-                download(&vid, &vid.title, &vid.vid_link, "", vid_ext, false);
+                download(
+                    &vid,
+                    &no_emoji,
+                    &vid.vid_link,
+                    " video",
+                    vid_ext,
+                    false,
+                    chapter,
+                );
+
+                if let Some(chapters) = vid.chapter_file {
+                    let vid_title =
+                        format!("{} video{}.{}", no_emoji, chapter, vid_ext).into_boxed_str();
+
+                    drop(no_emoji);
+
+                    if Command::new("ffmpeg")
+                        .args(["-i", &vid_title])
+                        .args(["-i", &chapters])
+                        .args(["-c", "copy"])
+                        .args(["-y".to_owned(), format!("{}.{}", vid.title, vid_ext)])
+                        .output()
+                        .expect("Failed to execute ffmpeg")
+                        .status
+                        .success()
+                    {
+                        println!("{YELLOW}\nVideo & Chapters merged successfully{RESET}");
+                        remove(&vid_title, "Failed to remove downloaded video");
+                    } else {
+                        eprintln!("\n{RED}Video & Chapters merge failed{RESET}");
+                    }
+                }
             }
         }
     }
@@ -474,10 +577,14 @@ fn download(
     mut types: &str,
     extension: &str,
     format_title: bool,
+    chapter: &str,
 ) {
-    println!("\nDownloading{}: {}", types, vid.title);
+    println!(
+        "\n{}Downloading{}:{} {}.{}",
+        YELLOW, types, RESET, vid.title, extension
+    );
 
-    if !format_title {
+    if !format_title && chapter.is_empty() {
         types = "";
     }
 
@@ -494,7 +601,11 @@ fn download(
 
         let no_multi_space = remove_multiple_spaces(&title);
 
-        format!("--out={}{}.{}", &no_multi_space, types, extension).into_boxed_str()
+        format!(
+            "--out={}{}{}.{}",
+            &no_multi_space, types, chapter, extension
+        )
+        .into_boxed_str()
     };
 
     if Command::new("aria2c")
@@ -515,7 +626,7 @@ fn download(
         .expect("Failed to execute aria2")
         .success()
     {
-        println!("\nDownloaded successfully");
+        println!("\n{YELLOW}Downloaded{types} successfully{RESET}");
     } else {
         eprintln!("\n{RED}Download Failed{RESET}");
     }

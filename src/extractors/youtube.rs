@@ -1,11 +1,18 @@
-use crate::{Vid, RED, RESET};
+use crate::{helpers::tmp_path::tmp_path, Vid, RED, RESET};
 use fastrand::Rng;
 use isahc::{
     config::{Configurable, VersionNegotiation},
     ReadResponseExt, Request, RequestExt,
 };
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde_json::{from_str, json, to_string, Value};
-use std::{error::Error, process::exit};
+use std::{error::Error, fs::File, io::Write, process::exit};
+
+pub struct Chapter {
+    start: u32,
+    title: Box<str>,
+}
 
 pub fn youtube(
     url: &str,
@@ -18,19 +25,19 @@ pub fn youtube(
         .rsplit_once("v=")
         .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
         .1
-        .rsplit(|delimiter| delimiter == '?' || delimiter == '&')
+        .rsplit(|delimiter| matches!(delimiter, '?' | '&'))
         .next_back()
         .unwrap_or_default();
 
     let mut vid = Vid {
-        user_agent: "com.google.android.youtube/19.11.36 (Linux; U; Android 14) gzip",
+        user_agent: "com.google.android.youtube/1.9 (Linux; U; Android 14) gzip",
         referrer: format!("https://www.youtube.com/watch?v={}", id).into(),
         ..Default::default()
     };
 
     let data: Value = {
-        const CLIENT_VERSION: &str = "19.11.36";
-        const CLIENT_NAME: &str = "ANDROID";
+        const CLIENT_VERSION: &str = "1.9";
+        const CLIENT_NAME: &str = "ANDROID_TESTSUITE";
 
         let json = {
             let rnd = Rng::new();
@@ -65,7 +72,7 @@ pub fn youtube(
             "cpn": cpn,
             "racyCheckOk": true,
             "contentCheckOk": true,
-            //"params": "CgIIAQ"
+            "params": "2AMB"
             });
 
             to_string(&json_value)?.into_boxed_str()
@@ -99,21 +106,32 @@ pub fn youtube(
         if let Some(formats) = data["streamingData"]["formats"].as_array() {
             exit_if_empty(formats);
 
+            let (mut v_codec, mut a_codec, mut v_link, mut res) = Default::default();
+
             for format in formats {
                 let (codec, quality, url, _) = vid_data(format)?;
 
-                if quality == resolution {
+                if quality > res {
                     let (vid_codec, audio_codec) = codec
                         .split_once(", ")
                         .expect(r#"Failed to find ", " which separates video & audio codec"#);
 
-                    vid.vid_link = url.into();
-                    vid.vid_codec = Some(vid_codec.into());
-                    vid.audio_codec = Some(audio_codec.into());
-                    vid.resolution = Some(quality);
+                    v_link = url;
+                    v_codec = vid_codec;
+                    a_codec = audio_codec;
+                    res = quality;
 
-                    break;
+                    if quality == resolution {
+                        break;
+                    }
                 }
+            }
+
+            if !v_link.is_empty() {
+                vid.vid_link = v_link.into();
+                vid.vid_codec = Some(v_codec.into());
+                vid.audio_codec = Some(a_codec.into());
+                vid.resolution = Some(res);
             }
         }
     }
@@ -148,10 +166,41 @@ pub fn youtube(
             vid.vid_codec = Some(v_codec.into());
         }
     }
+
     vid.title = data["videoDetails"]["title"]
         .as_str()
         .expect("Failed to get title")
         .into();
+
+    {
+        let mut chapters = Vec::new();
+
+        if let Some(description) = data["videoDetails"]["shortDescription"].as_str() {
+            static CHAPTER_RE: Lazy<Regex> = Lazy::new(|| {
+                Regex::new(r"\n([0-6]?[0-9]:)?([0-6]?[0-9]:[0-6]?[0-9])[[:space:]](.+)").unwrap()
+            });
+
+            for chapter in CHAPTER_RE.captures_iter(description) {
+                let hour = if let Some(hour) = chapter.get(1) {
+                    hour.as_str()
+                } else {
+                    ""
+                };
+
+                chapters.push(Chapter {
+                    start: timestamp_to_ms(&format!("{}{}", hour, &chapter[2]))?,
+                    title: chapter[3].into(),
+                });
+            }
+        }
+
+        if !chapters.is_empty() {
+            let file_path = format!("{}{}.txt", tmp_path(false)?, &vid.title).into_boxed_str();
+            create_chapter_file(&chapters, &file_path)?;
+
+            vid.chapter_file = Some(file_path)
+        }
+    }
 
     Ok(vid)
 }
@@ -204,4 +253,50 @@ fn exit_if_empty<T>(formats: &[T]) {
         eprintln!("{}No result{}", RED, RESET);
         exit(1);
     }
+}
+
+fn timestamp_to_ms(timestamp: &str) -> Result<u32, Box<dyn Error>> {
+    let parts: Vec<&str> = timestamp.split(':').collect();
+
+    let mut hours: u32 = 0;
+    let minutes: u32;
+    let seconds: u32;
+
+    match parts.len() {
+        2 => {
+            minutes = parts[0].parse()?;
+            seconds = parts[1].parse()?;
+        }
+        3 => {
+            hours = parts[0].parse()?;
+            minutes = parts[1].parse()?;
+            seconds = parts[2].parse()?;
+        }
+        _ => unreachable!(),
+    }
+
+    let milliseconds = (hours * 3600 + minutes * 60 + seconds) * 1000;
+    Ok(milliseconds)
+}
+
+fn create_chapter_file(chapters: &[Chapter], file_path: &str) -> Result<(), Box<dyn Error>> {
+    let mut ffmpeg_chapter = String::from(";FFMETADATA1\n");
+
+    for chapter in chapters {
+        ffmpeg_chapter.push_str(&format!(
+            "[CHAPTER]
+TIMEBASE=1/1000
+START={}
+END=
+title={}\n",
+            chapter.start, chapter.title
+        ));
+    }
+
+    match File::create(file_path) {
+        Ok(mut file) => file.write_all(ffmpeg_chapter.as_bytes())?,
+        Err(_) => eprintln!("{RED}Failed to create file{RESET}"),
+    }
+
+    Ok(())
 }
