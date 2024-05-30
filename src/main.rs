@@ -601,11 +601,7 @@ fn download(
 
         let no_multi_space = remove_multiple_spaces(&title);
 
-        format!(
-            "--out={}{}{}.{}",
-            &no_multi_space, types, chapter, extension
-        )
-        .into_boxed_str()
+        format!("--out={}{}{}.{}", no_multi_space, types, chapter, extension).into_boxed_str()
     };
 
     if Command::new("aria2c")

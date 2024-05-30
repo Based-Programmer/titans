@@ -25,7 +25,7 @@ pub fn youtube(
         .rsplit_once("v=")
         .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
         .1
-        .rsplit(|delimiter| matches!(delimiter, '?' | '&'))
+        .rsplit(['?', '&'])
         .next_back()
         .unwrap_or_default();
 
@@ -177,7 +177,8 @@ pub fn youtube(
 
         if let Some(description) = data["videoDetails"]["shortDescription"].as_str() {
             static CHAPTER_RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new(r"\n([0-6]?[0-9]:)?([0-6]?[0-9]:[0-6]?[0-9])[[:space:]](.+)").unwrap()
+                Regex::new(r"\n[^\p{L}\p{N}\p{P}]*[[:space:]]*[(|{|\[]?([0-6]?[0-9]:)?([0-6]?[0-9]:[0-6]?[0-9])[)|}|\]]?[[:space:]](.+)")
+                    .unwrap()
             });
 
             for chapter in CHAPTER_RE.captures_iter(description) {

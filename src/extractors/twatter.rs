@@ -124,33 +124,58 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
         vid.title = unescape_html_chars(title);
     }
 
+    let variants = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]["media"][0]
+        ["video_info"]["variants"]
+        .as_array()
+        .expect("Failed to convert variants to array");
+
     if !streaming_link {
-        vid.vid_link = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]
-            ["media"][0]["video_info"]["variants"]
-            .as_array()
-            .expect("Failed to convert variants to array")
-            .iter()
-            .max_by_key(|variant| variant["bitrate"].as_u64())
-            .map(|variant| {
-                variant["url"]
+        let variants = variants.iter().skip(1);
+
+        if resolution != 0 {
+            for variant in variants.clone() {
+                let url = variant["url"]
                     .as_str()
-                    .expect("Failed to get url from the json")
-            })
-            .expect("Failed to get video link")
-            .into();
+                    .expect("Failed to get url from json");
+
+                let (res1, res2) = url
+                    .rsplit_once("/vid/avc1/")
+                    .expect("Failed to get pattern '/vid/avc1/' in url")
+                    .1
+                    .split_once('/')
+                    .expect("Failed to split at '/' in url")
+                    .0
+                    .split_once('x')
+                    .expect("Failed to get mp4 resolution");
+
+                let res1: u16 = res1
+                    .parse()
+                    .expect("Failed to convert resolution 1 to number");
+                let res2: u16 = res2
+                    .parse()
+                    .expect("Failed to convert resolution 2 to number");
+
+                if resolution == res1 || resolution == res2 {
+                    vid.vid_link = url.into();
+                }
+            }
+        }
+
+        if vid.vid_link.is_empty() {
+            vid.vid_link = variants
+                .max_by_key(|variant| variant["bitrate"].as_u64())
+                .map(|variant| {
+                    variant["url"]
+                        .as_str()
+                        .expect("Failed to get url from the json")
+                })
+                .expect("Failed to get video link")
+                .into();
+        }
     } else {
-        let m3u8: Box<str> = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]
-            ["media"][0]["video_info"]["variants"]
-            .as_array()
-            .expect("Failed to convert variants to array")
-            .iter()
-            .map(|variant| {
-                variant["url"]
-                    .as_str()
-                    .expect("Failed to get url from the json")
-            })
-            .find(|url| url.contains(".m3u8?tag="))
-            .unwrap()
+        let m3u8: Box<str> = variants[0]["url"]
+            .as_str()
+            .expect("Failed to get url from the json")
             .into();
 
         drop(data);
@@ -158,25 +183,20 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
         let resp = get_isahc_client(&client, &m3u8)?;
 
         if resolution == 0 {
-            match best_link(&resp) {
-                Some(vid_link) => vid.vid_link = vid_link,
-                None => eprintln!("{RED}Failed to get best video link{RESET}"),
-            }
+            best_link(&resp, &mut vid)
         }
 
         if vid.vid_link.is_empty() {
             static RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new(
-                    r"#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]*)x([0-9]*).*\n(.*\.m3u8\?container=)",
-                )
-                .unwrap()
+                Regex::new(r"#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]*)x([0-9]*).*\n(.*\.m3u8)")
+                    .unwrap()
             });
 
             for captures in RE.captures_iter(&resp) {
                 let res_str = resolution.to_string();
 
                 if res_str == captures[1] || res_str == captures[2] {
-                    vid.vid_link = format!("https://video.twimg.com{}fmp4", &captures[3]).into();
+                    vid.vid_link = format!("https://video.twimg.com{}", &captures[3]).into();
                     break;
                 }
             }
@@ -188,8 +208,10 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
                     exit(1);
                 } else {
                     eprintln!("{YELLOW}Trying to get the best video link{RESET}");
-                    vid.vid_link = best_link(&resp).expect("Failed to get best video link")
+                    best_link(&resp, &mut vid)
                 }
+            } else {
+                audio_link(&resp, &mut vid)
             }
         }
     }
@@ -197,14 +219,29 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
     Ok(vid)
 }
 
-fn best_link(resp: &str) -> Option<Box<str>> {
-    Some(
-        format!(
-            "https://video.twimg.com{}.m3u8?container=fmp4",
-            resp.lines().last()?.rsplit_once(".m3u8?container=")?.0
-        )
-        .into(),
-    )
+fn best_link(resp: &str, vid: &mut Vid) {
+    vid.vid_link = format!("https://video.twimg.com{}", resp.lines().last().unwrap()).into();
+    audio_link(resp, vid)
+}
+
+fn audio_link(resp: &str, vid: &mut Vid) {
+    let (mut audio_link, mut audio_line) = Default::default();
+
+    for line in resp.lines() {
+        if line.starts_with(r#"#EXT-X-MEDIA:NAME="Audio","#) {
+            audio_line = line;
+        }
+    }
+
+    if !audio_line.is_empty() {
+        audio_link = audio_line
+            .rsplit_once("URI=\"")
+            .unwrap()
+            .1
+            .trim_end_matches('"');
+    }
+
+    vid.audio_link = Some(format!("https://video.twimg.com{}", audio_link).into());
 }
 
 fn fetch_guest_token(

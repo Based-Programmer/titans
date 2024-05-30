@@ -50,7 +50,8 @@ pub fn rumble(url: &str, resolution: u16) -> Result<Vid, Box<dyn Error>> {
                 vid.resolution = Some(resolution);
                 break;
             }
-            last_line = line.to_owned();
+
+            line.clone_into(&mut last_line);
         }
 
         if vid.vid_link.is_empty() {
