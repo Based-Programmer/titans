@@ -33,14 +33,14 @@ pub fn youtube(
         .unwrap_or_default();
 
     let mut vid = Vid {
-        user_agent: "com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip",
+        user_agent: "com.google.android.apps.youtube.vr.oculus/1.57.29 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
         referrer: format!("https://www.youtube.com/watch?v={}", id).into(),
         ..Default::default()
     };
 
     let data: Value = {
-        const CLIENT_VERSION: &str = "19.29.37";
-        const CLIENT_NAME: &str = "ANDROID";
+        const CLIENT_VERSION: &str = "1.57.29";
+        const CLIENT_NAME: &str = "ANDROID_VR";
 
         let json = {
             let rnd = Rng::new();
@@ -49,15 +49,17 @@ pub fn youtube(
             let json_value = json!({
             "context": {
                 "client": {
-                    "androidSdkVersion": 30,
+                    "androidSdkVersion": 32,
                     "clientName": CLIENT_NAME,
                     "clientVersion": CLIENT_VERSION,
                     "clientScreen": "WATCH",
                     "gl": "IN",
                     "hl": "en",
                     "utcOffsetMinutes": 0,
+                    "deviceMake": "Oculus",
+                    "deviceModel": "Quest 3",
                     "osName": "Android",
-                    "osVersion": "11",
+                    "osVersion": "12L",
                     "platform": "MOBILE"
                 },
                 "request": {
