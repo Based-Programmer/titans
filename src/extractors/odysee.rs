@@ -1,4 +1,7 @@
-use crate::{helpers::reqwests::get_isahc, Vid};
+use crate::{
+    helpers::{reqwests::get_isahc, unescape_html_chars::unescape_html_chars},
+    Vid,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -20,7 +23,7 @@ pub fn odysee(url: &str) -> Result<Vid, Box<dyn Error>> {
     vid.vid_link = RE.captures(&resp).expect("Failed to get link")[1].into();
 
     static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<title>(.*?)</title>").unwrap());
-    vid.title = RE_TITLE.captures(&resp).expect("Failed to get link")[1].into();
+    vid.title = unescape_html_chars(&RE_TITLE.captures(&resp).expect("Failed to get link")[1]);
 
     Ok(vid)
 }

@@ -1,4 +1,7 @@
-use crate::{helpers::tmp_path::tmp_path, Vid, RED, RESET};
+use crate::{
+    helpers::{tmp_path::tmp_path, unescape_html_chars::unescape_html_chars},
+    Vid, RED, RESET,
+};
 use fastrand::Rng;
 use isahc::{
     config::{Configurable, VersionNegotiation},
@@ -6,7 +9,7 @@ use isahc::{
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
-use serde_json::{from_str, json, to_string, Value};
+use serde_json::{json, to_string, Value};
 use std::{error::Error, fs::File, io::Write, process::exit};
 
 pub struct Chapter {
@@ -30,14 +33,14 @@ pub fn youtube(
         .unwrap_or_default();
 
     let mut vid = Vid {
-        user_agent: "com.google.android.youtube/1.9 (Linux; U; Android 14) gzip",
+        user_agent: "com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip",
         referrer: format!("https://www.youtube.com/watch?v={}", id).into(),
         ..Default::default()
     };
 
     let data: Value = {
-        const CLIENT_VERSION: &str = "1.9";
-        const CLIENT_NAME: &str = "ANDROID_TESTSUITE";
+        const CLIENT_VERSION: &str = "19.29.37";
+        const CLIENT_NAME: &str = "ANDROID";
 
         let json = {
             let rnd = Rng::new();
@@ -46,7 +49,7 @@ pub fn youtube(
             let json_value = json!({
             "context": {
                 "client": {
-                    "androidSdkVersion": 34,
+                    "androidSdkVersion": 30,
                     "clientName": CLIENT_NAME,
                     "clientVersion": CLIENT_VERSION,
                     "clientScreen": "WATCH",
@@ -54,7 +57,7 @@ pub fn youtube(
                     "hl": "en",
                     "utcOffsetMinutes": 0,
                     "osName": "Android",
-                    "osVersion": "14",
+                    "osVersion": "11",
                     "platform": "MOBILE"
                 },
                 "request": {
@@ -78,7 +81,7 @@ pub fn youtube(
             to_string(&json_value)?.into_boxed_str()
         };
 
-        let resp = Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
+        Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
             .header("user-agent", vid.user_agent)
             .header("referer", &*vid.referrer)
             .header("content-type", "application/json")
@@ -87,9 +90,7 @@ pub fn youtube(
             .version_negotiation(VersionNegotiation::http2())
             .body(&*json)?
             .send()?
-            .text()?;
-
-        from_str(&resp).expect("Failed to derive json")
+            .json()?
     };
 
     vid_codec = match vid_codec {
@@ -103,37 +104,7 @@ pub fn youtube(
     }
 
     if !is_dash && vid_codec == "avc" {
-        if let Some(formats) = data["streamingData"]["formats"].as_array() {
-            exit_if_empty(formats);
-
-            let (mut v_codec, mut a_codec, mut v_link, mut res) = Default::default();
-
-            for format in formats {
-                let (codec, quality, url, _) = vid_data(format)?;
-
-                if quality > res {
-                    let (vid_codec, audio_codec) = codec
-                        .split_once(", ")
-                        .expect(r#"Failed to find ", " which separates video & audio codec"#);
-
-                    v_link = url;
-                    v_codec = vid_codec;
-                    a_codec = audio_codec;
-                    res = quality;
-
-                    if quality == resolution {
-                        break;
-                    }
-                }
-            }
-
-            if !v_link.is_empty() {
-                vid.vid_link = v_link.into();
-                vid.vid_codec = Some(v_codec.into());
-                vid.audio_codec = Some(a_codec.into());
-                vid.resolution = Some(res);
-            }
-        }
+        not_dash_link(&data, resolution, &mut vid)?;
     }
 
     if vid.vid_link.is_empty() {
@@ -167,17 +138,18 @@ pub fn youtube(
         }
     }
 
-    vid.title = data["videoDetails"]["title"]
-        .as_str()
-        .expect("Failed to get title")
-        .into();
+    vid.title = unescape_html_chars(
+        data["videoDetails"]["title"]
+            .as_str()
+            .expect("Failed to get title"),
+    );
 
     {
         let mut chapters = Vec::new();
 
         if let Some(description) = data["videoDetails"]["shortDescription"].as_str() {
             static CHAPTER_RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new(r"\n[^\p{L}\p{N}\p{P}]*[[:space:]]*[(|{|\[]?([0-6]?[0-9]:)?([0-6]?[0-9]:[0-6]?[0-9])[)|}|\]]?[[:space:]](.+)")
+                Regex::new(r"\n[^\p{L}\p{N}\p{P}]*[[:space:]]*[(|{|\[]?([0-6]?[0-9]:)?([0-6]?[0-9]:[0-6]?[0-9])[)|}|\]]?([[:space:]]*[:|–|-])?[[:space:]]+(.+)")
                     .unwrap()
             });
 
@@ -190,20 +162,61 @@ pub fn youtube(
 
                 chapters.push(Chapter {
                     start: timestamp_to_ms(&format!("{}{}", hour, &chapter[2]))?,
-                    title: chapter[3].into(),
+                    title: chapter[4].into(),
                 });
             }
         }
 
         if !chapters.is_empty() {
-            let file_path = format!("{}{}.txt", tmp_path(false)?, &vid.title).into_boxed_str();
+            let file_path = format!("{}{}.txt", tmp_path(false)?, vid.title.replace('/', "\\"))
+                .into_boxed_str();
             create_chapter_file(&chapters, &file_path)?;
 
             vid.chapter_file = Some(file_path)
         }
     }
 
+    if vid.vid_link.is_empty() {
+        not_dash_link(&data, resolution, &mut vid)?;
+    }
+
     Ok(vid)
+}
+
+fn not_dash_link(data: &Value, resolution: u16, vid: &mut Vid) -> Result<(), Box<dyn Error>> {
+    if let Some(formats) = data["streamingData"]["formats"].as_array() {
+        exit_if_empty(formats);
+
+        let (mut v_codec, mut a_codec, mut v_link, mut res) = Default::default();
+
+        for format in formats {
+            let (codec, quality, url, _) = vid_data(format)?;
+
+            if quality > res {
+                let (vid_codec, audio_codec) = codec
+                    .split_once(", ")
+                    .expect(r#"Failed to find ", " which separates video & audio codec"#);
+
+                v_link = url;
+                v_codec = vid_codec;
+                a_codec = audio_codec;
+                res = quality;
+
+                if quality == resolution {
+                    break;
+                }
+            }
+        }
+
+        if !v_link.is_empty() {
+            vid.vid_link = v_link.into();
+            vid.vid_codec = Some(v_codec.into());
+            vid.audio_codec = Some(a_codec.into());
+            vid.resolution = Some(res);
+        }
+    }
+
+    Ok(())
 }
 
 fn vid_data(format: &Value) -> Result<(&str, u16, &str, u64), Box<dyn Error>> {

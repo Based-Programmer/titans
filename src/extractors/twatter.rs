@@ -23,7 +23,7 @@ use url::{form_urlencoded::byte_serialize, Url};
 pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
         referrer: format!(
-            "https://twitter.com{}",
+            "https://x.com{}",
             Url::parse(&format!("http://{}", url))?.path()
         )
         .into(),
@@ -93,7 +93,7 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
     }"#;
 
             format!(
-        "https://twitter.com/i/api/graphql/0hWvDhmW8YQ-S_ib3azIrw/TweetResultByRestId?variables={}&features={}&fieldToggles={}",
+        "https://x.com/i/api/graphql/0hWvDhmW8YQ-S_ib3azIrw/TweetResultByRestId?variables={}&features={}&fieldToggles={}",
         byte_serialize(to_string(&variables)?.as_bytes()).collect::<String>(),
         byte_serialize(FEATURES.as_bytes()).collect::<String>(),
         byte_serialize(FIELDS.as_bytes()).collect::<String>(),
@@ -111,21 +111,26 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
         client.send(req)?.json()?
     };
 
+    let legacy;
     {
-        let title_data = data["data"]["tweetResult"]["result"]["legacy"]["full_text"]
-            .as_str()
-            .expect("Failed to get title");
+        let result = &data["data"]["tweetResult"]["result"];
+        legacy = &result["legacy"];
 
-        let title = title_data
-            .rsplit_once(" https://t.co/")
-            .unwrap_or((title_data, ""))
-            .0;
+        let title = match result["note_tweet"]["note_tweet_results"]["result"]["text"].as_str() {
+            Some(title) => title,
+            None => {
+                let title_data = legacy["full_text"].as_str().expect("Failed to get title");
+                title_data
+                    .rsplit_once(" https://t.co/")
+                    .unwrap_or((title_data, ""))
+                    .0
+            }
+        };
 
         vid.title = unescape_html_chars(title);
     }
 
-    let variants = data["data"]["tweetResult"]["result"]["legacy"]["extended_entities"]["media"][0]
-        ["video_info"]["variants"]
+    let variants = legacy["extended_entities"]["media"][0]["video_info"]["variants"]
         .as_array()
         .expect("Failed to convert variants to array");
 
@@ -250,11 +255,13 @@ fn fetch_guest_token(
     tmp_path: &str,
 ) -> Result<u64, Box<dyn Error>> {
     let guest_token = {
-        let req = Request::post("https://api.twitter.com/1.1/guest/activate.json")
+        let req = Request::post("https://api.x.com/1.1/guest/activate.json")
         .header("user-agent", vid.user_agent)
         .header("authorization", "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA")
         .version_negotiation(VersionNegotiation::http2())
-        .body(())?;
+        .body("x")?; // cope; body shud be undefined
+                     // but isahc sends nil body which doesn't wrk
+                     // but sending some body wrks
 
         client.send(req)?.json::<Value>()?["guest_token"]
             .as_str()

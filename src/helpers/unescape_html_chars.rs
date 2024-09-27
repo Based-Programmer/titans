@@ -8,9 +8,11 @@ pub fn unescape_html_chars(title: &str) -> Box<str> {
         .replace("&apos;", "'")
         .replace("&#x27;", "'")
         .replace("&#x39;", "'")
+        .replace("&#039;", "'")
         .replace("&#40;", "(")
         .replace("&#41;", ")")
         .replace('\u{200b}', "")
         .replace("\\u2013", "-")
+        .replace('\u{a0}', " ")
         .into()
 }

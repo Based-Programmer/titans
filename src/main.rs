@@ -82,6 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     */
 
     const VTUBE_PREFIXES: [&str; 2] = ["vtbe.to/", "vtube.network/"];
+    const LIBSYN_PREFIXES: [&str; 2] = ["play.libsyn.com", "html5-player.libsyn.com"];
     const SPOTIFY_PREFIXES: [&str; 2] = [
         "open.spotify.com/episode/",
         "open.spotify.com/embed/episode/",
@@ -140,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "t.sneed.network/",
     ];
 
-    const TWATTER_PREFIXES: [&str; 11] = [
+    const TWATTER_PREFIXES: [&str; 12] = [
         "x.com/",
         "mobile.x.com/",
         "twitter.com/",
@@ -153,6 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "tweet.lambda.dance/",
         "bird.habedieeh.re/",
         "t.com.sb/",
+        "xcancel.com/",
     ];
 
     const DOODSTREAM_PREFIXES: [&str; 7] = [
@@ -198,7 +200,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "-s" | "--stream_link" => streaming_link = true,
             "-c" | "--combined" => is_dash = false,
             "-b" | "--best" => resolution = 0,
-            arg if starts(&["-r=", "--resolution="], arg) => {
+            arg if starts(&["-q=", "--quality="], arg) => {
                 resolution = arg
                     .split_once('=')
                     .unwrap()
@@ -250,12 +252,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                         vid = doodstream(arg, streaming_link)?;
                     } else if starts(&VTUBE_PREFIXES, arg) {
                         vid = vtube(arg, streaming_link)?;
+                    } else if starts(&LIBSYN_PREFIXES, arg) {
+                        vid = libsyn(arg)?;
                     } else if arg.starts_with("mp4upload.com/") {
                         vid = mp4upload(arg)?;
                     } else if arg.starts_with("rokfin.com/post/") {
                         vid = rokfin(arg, resolution)?;
-                    } else if arg.starts_with("html5-player.libsyn.com/") {
-                        vid = libsyn(arg)?;
                     } else {
                         eprintln!("{RED}Unsupported link:{YELLOW} https://{arg}{RESET}\n");
                         exit(1);
@@ -484,9 +486,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         .args(["-i", &vid_title])
                         .args(["-i", &audio_title])
                         .args(ffmpeg_args.iter())
-                        .output()
+                        .status()
                         .expect("Failed to execute ffmpeg")
-                        .status
                         .success()
                     {
                         println!(
@@ -557,7 +558,7 @@ Arguments:
 \t-d, --download\t\t Download video with aria2
 \t-D, --dl_link\t\t Get download link
 \t-s, --stream_link\t Get streaming link
-\t-r=, --resolution=720p\t Select resolution
+\t-q=, --quality=720p\t Select resolution
 \t-vc=, --video-codec=vp9\t Select video codec (default: avc)
 \t-ac=, --audio-codec=mp4a Select audio codec (default: opus)
 \t-c, --combined\t\t Combined video & audio
@@ -589,13 +590,14 @@ fn download(
     }
 
     let title_arg = {
-        let title = if vid_title.len() > 113 {
-            let title = &vid_title[..113];
+        let title = if vid_title.len() > 201 {
+            let title = &vid_title[..201];
             title.rsplit_once(' ').unwrap_or((title, "")).0
         } else {
             vid_title
         }
         .replace('\n', " ")
+        .replace('/', "|")
         .trim_end_matches('.')
         .to_owned();
 
