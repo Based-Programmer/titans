@@ -5,7 +5,7 @@ Blazingly fast scraper
 #### Update
 
 - titans now uses `ANDROID_VR` client which doesn't support YT Kids videos for unknown reason
-- previously using `ANDROID_TESTSUITE` client which now doesn't support any videos other than YT Kids lmao
+- previously using `ANDROID_TESTSUITE` client which now doesn't support any videos other than YT Kids
 - we are expecting sooner or later YT will hook kids into VR anw
 
 # Install
