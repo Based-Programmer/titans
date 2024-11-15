@@ -5,15 +5,10 @@ use crate::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
-use url::Url;
 
 pub fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: format!(
-            "https://www.reddit.com{}",
-            Url::parse(&format!("https://{}", url))?.path()
-        )
-        .into(),
+        referrer: format!("https://www.reddit.com/{}", url.split_once('/').unwrap().1).into(),
         ..Default::default()
     };
 
@@ -23,12 +18,12 @@ pub fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
         get_isahc_client(client, &json_url)?
     };
 
-    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.*?)", ""#).unwrap());
+    static RE_TITLE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""title": "(.+?)", ""#).unwrap());
     vid.title = RE_TITLE.captures(&resp).expect("Failed to get title")[1]
         .replace(r#"\""#, "")
         .into();
 
-    static DASH_LINK: Lazy<Regex> = Lazy::new(|| Regex::new(r#""dash_url": "([^"]*)"#).unwrap());
+    static DASH_LINK: Lazy<Regex> = Lazy::new(|| Regex::new(r#""dash_url": "([^"]+)"#).unwrap());
     let dash_link: Box<str> = DASH_LINK.captures(&resp).expect("Failed to get link")[1].into();
 
     static VID_URL: Lazy<Regex> = Lazy::new(|| Regex::new(r#""fallback_url": "([^"]*)"#).unwrap());
@@ -37,7 +32,7 @@ pub fn reddit(url: &str) -> Result<Vid, Box<dyn Error>> {
         link[1].into()
     } else {
         static DASH_VID: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"<BaseURL>(DASH_[0-9]*(\.mp4)?)</BaseURL>").unwrap());
+            Lazy::new(|| Regex::new(r"<BaseURL>(DASH_[0-9]+(\.mp4)?)</BaseURL>").unwrap());
 
         let best_video = &DASH_VID
             .captures_iter(&resp)

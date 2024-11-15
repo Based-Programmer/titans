@@ -5,16 +5,19 @@ use crate::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
-use url::Url;
 
 pub fn odysee(url: &str) -> Result<Vid, Box<dyn Error>> {
-    let mut vid = Vid {
-        referrer: format!(
-            "https://odysee.com{}",
-            Url::parse(&format!("https://{}", url))?.path()
-        )
-        .into(),
-        ..Default::default()
+    let mut vid = {
+        let path = url
+            .split_once('/')
+            .unwrap()
+            .1
+            .trim_start_matches("$/embed/");
+
+        Vid {
+            referrer: format!("https://odysee.com/{}", path).into(),
+            ..Default::default()
+        }
     };
 
     let resp = get_isahc(&vid.referrer, vid.user_agent, &vid.referrer)?;

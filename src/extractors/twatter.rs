@@ -119,11 +119,11 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
         let title = match result["note_tweet"]["note_tweet_results"]["result"]["text"].as_str() {
             Some(title) => title,
             None => {
-                let title_data = legacy["full_text"].as_str().expect("Failed to get title");
-                title_data
-                    .rsplit_once(" https://t.co/")
-                    .unwrap_or((title_data, ""))
-                    .0
+                let full_title = legacy["full_text"].as_str().expect("Failed to get title");
+                full_title
+                    .rsplit_once("https://t.co/")
+                    .map_or(full_title, |(title, _)| title)
+                    .trim_end()
             }
         };
 
@@ -193,7 +193,7 @@ pub fn twatter(url: &str, resolution: u16, streaming_link: bool) -> Result<Vid, 
 
         if vid.vid_link.is_empty() {
             static RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new(r"#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]*)x([0-9]*).*\n(.*\.m3u8)")
+                Regex::new(r"#EXT-X-STREAM-INF:.*?RESOLUTION=([0-9]+)x([0-9]+).*\n(.+\.m3u8)")
                     .unwrap()
             });
 

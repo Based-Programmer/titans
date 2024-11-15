@@ -1,6 +1,7 @@
 pub mod bitchute;
 pub mod doodstream;
 pub mod libsyn;
+pub mod lulustream;
 pub mod mp4upload;
 pub mod odysee;
 pub mod reddit;

@@ -14,5 +14,6 @@ pub fn unescape_html_chars(title: &str) -> Box<str> {
         .replace('\u{200b}', "")
         .replace("\\u2013", "-")
         .replace('\u{a0}', " ")
+        .replace("\\\"", "\"")
         .into()
 }

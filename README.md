@@ -2,12 +2,6 @@
 
 Blazingly fast scraper
 
-#### Update
-
-- titans now uses `ANDROID_VR` client which doesn't support YT Kids videos for unknown reason
-- previously using `ANDROID_TESTSUITE` client which now doesn't support any videos other than YT Kids
-- we are expecting sooner or later YT will hook kids into VR anway
-
 # Install
 
 #### Linux/Windows/Android
@@ -90,7 +84,8 @@ titans -h
 
 - [bitchute](https://www.bitchute.com)
 - [doodstream](https://doodstream.com)
-- [libsyn](https://libsyn.com) only play links (https://html5-player.libsyn.com/episode/id/[0-9]*) as of now
+- [libsyn](https://libsyn.com) only play links (https://html5-player.libsyn.com/episode/id/[0-9]+) as of now
+- [lulustream](https://lulustream.com)
 - [mp4upload](https://www.mp4upload.com)
 - [odysee](https://odysee.com)
 - [reddit](https://www.reddit.com)

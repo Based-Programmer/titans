@@ -2,10 +2,11 @@ mod extractors;
 mod helpers;
 
 use extractors::{
-    bitchute::bitchute, doodstream::doodstream, libsyn::libsyn, mp4upload::mp4upload,
-    odysee::odysee, reddit::reddit, rokfin::rokfin, rumble::rumble, spotify::spotify,
-    streamdav::streamdav, streamhub::streamhub, streamtape::streamtape, streamvid::streamvid,
-    substack::substack, twatter::twatter, vtube::vtube, wolfstream::wolfstream, youtube::youtube,
+    bitchute::bitchute, doodstream::doodstream, libsyn::libsyn, lulustream::lulustream,
+    mp4upload::mp4upload, odysee::odysee, reddit::reddit, rokfin::rokfin, rumble::rumble,
+    spotify::spotify, streamdav::streamdav, streamhub::streamhub, streamtape::streamtape,
+    streamvid::streamvid, substack::substack, twatter::twatter, vtube::vtube,
+    wolfstream::wolfstream, youtube::youtube,
 };
 
 use once_cell::sync::Lazy;
@@ -81,8 +82,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     */
 
+    const LULUSTREAM_PREFIXES: [&str; 4] =
+        ["lulu.st/", "lulustream.com/", "luluvdo.com/", "cdn1.site/"];
     const VTUBE_PREFIXES: [&str; 2] = ["vtbe.to/", "vtube.network/"];
-    const LIBSYN_PREFIXES: [&str; 2] = ["play.libsyn.com", "html5-player.libsyn.com"];
+    const LIBSYN_PREFIXES: [&str; 2] = ["play.libsyn.com/", "html5-player.libsyn.com/"];
     const SPOTIFY_PREFIXES: [&str; 2] = [
         "open.spotify.com/episode/",
         "open.spotify.com/embed/episode/",
@@ -106,7 +109,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Piped
         "piped.",
         "watch.leptons.xyz/",
-        "pi.ggtyler.dev",
+        "pi.ggtyler.dev/",
         // Invidious instances generally start with invidious, inv, etc
         "invidious.",
         "inv.",
@@ -150,21 +153,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         "nitter.",
         "nt.",
         "n.",
+        "xcancel.com/",
         "twiiit.com/",
         "tweet.lambda.dance/",
         "bird.habedieeh.re/",
         "t.com.sb/",
-        "xcancel.com/",
     ];
 
     const DOODSTREAM_PREFIXES: [&str; 7] = [
         "doodstream.com/",
+        "dood.",
         "d0o0d.com/",
         "d0000d.com/",
         "ds2play.com/",
         "dooood.com/",
         "doods.pro/",
-        "dood.",
     ];
 
     for arg in args().skip(1) {
@@ -254,6 +257,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         vid = vtube(arg, streaming_link)?;
                     } else if starts(&LIBSYN_PREFIXES, arg) {
                         vid = libsyn(arg)?;
+                    } else if starts(&LULUSTREAM_PREFIXES, arg) {
+                        vid = lulustream(arg)?;
                     } else if arg.starts_with("mp4upload.com/") {
                         vid = mp4upload(arg)?;
                     } else if arg.starts_with("rokfin.com/post/") {
@@ -564,7 +569,7 @@ Arguments:
 \t-c, --combined\t\t Combined video & audio
 \t-b, --best\t\t best resolution while playing (use it after -p flag)
 
-Supported Extractors: bitchute, doodstream, libsyn, mp4upload, odysee, reddit, rokfin, rumble, spotify, streamdav, streamhub, streamtape, streamvid, substack, twatter, vtube, wolfstream, youtube");
+Supported Extractors: bitchute, doodstream, libsyn, lulustream, mp4upload, odysee, reddit, rokfin, rumble, spotify, streamdav, streamhub, streamtape, streamvid, substack, twatter, vtube, wolfstream, youtube");
 }
 
 fn version() {

@@ -45,18 +45,16 @@ pub fn rumble(url: &str, resolution: u16) -> Result<Vid, Box<dyn Error>> {
         let mut last_line = String::new();
 
         for line in resp.lines() {
-            if line.ends_with(&format!("_{resolution}p/chunklist.m3u8")) {
+            if line.contains(&format!("_{resolution}p")) && line.ends_with(".m3u8") {
                 vid.vid_link = line.into();
                 vid.resolution = Some(resolution);
-                break;
+                return Ok(vid);
             }
 
             line.clone_into(&mut last_line);
         }
 
-        if vid.vid_link.is_empty() {
-            vid.vid_link = last_line.into();
-        }
+        vid.vid_link = last_line.into();
     }
 
     Ok(vid)

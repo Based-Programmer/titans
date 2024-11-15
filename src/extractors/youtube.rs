@@ -28,9 +28,9 @@ pub fn youtube(
         .rsplit_once("v=")
         .unwrap_or(url.rsplit_once('/').expect("Invalid Youtube url"))
         .1
-        .rsplit(['?', '&'])
-        .next_back()
-        .unwrap_or_default();
+        .split(['?', '&'])
+        .next()
+        .unwrap();
 
     let mut vid = Vid {
         user_agent: "com.google.android.apps.youtube.vr.oculus/1.57.29 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
@@ -40,7 +40,6 @@ pub fn youtube(
 
     let data: Value = {
         const CLIENT_VERSION: &str = "1.57.29";
-        const CLIENT_NAME: &str = "ANDROID_VR";
 
         let json = {
             let rnd = Rng::new();
@@ -49,8 +48,7 @@ pub fn youtube(
             let json_value = json!({
             "context": {
                 "client": {
-                    "androidSdkVersion": 32,
-                    "clientName": CLIENT_NAME,
+                    "clientName": "ANDROID_VR",
                     "clientVersion": CLIENT_VERSION,
                     "clientScreen": "WATCH",
                     "gl": "IN",
@@ -60,6 +58,7 @@ pub fn youtube(
                     "deviceModel": "Quest 3",
                     "osName": "Android",
                     "osVersion": "12L",
+                    "androidSdkVersion": 32,
                     "platform": "MOBILE"
                 },
                 "request": {
@@ -83,17 +82,18 @@ pub fn youtube(
             to_string(&json_value)?.into_boxed_str()
         };
 
-        Request::post("https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w&prettyPrint=false")
+        Request::post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
             .header("user-agent", vid.user_agent)
             .header("referer", &*vid.referrer)
             .header("content-type", "application/json")
-            .header("x-youtube-client-name", CLIENT_NAME)
+            .header("x-youtube-client-name", 28)
             .header("x-youtube-client-version", CLIENT_VERSION)
             .version_negotiation(VersionNegotiation::http2())
             .body(&*json)?
             .send()?
             .json()?
     };
+    // println!("{:?}", data);
 
     vid_codec = match vid_codec {
         "h264" | "libx264" => "avc",
@@ -109,6 +109,10 @@ pub fn youtube(
         not_dash_link(&data, resolution, &mut vid)?;
     }
 
+    if resolution > 1080 && vid_codec == "avc" {
+        vid_codec = "vp9"
+    }
+
     if vid.vid_link.is_empty() {
         if let Some(formats) = data["streamingData"]["adaptiveFormats"].as_array() {
             exit_if_empty(formats);
@@ -118,17 +122,42 @@ pub fn youtube(
             let (mut v_codec, mut a_codec, mut v_link, mut a_link, mut res) = Default::default();
 
             for format in formats {
-                let (codec, quality, url, bitrate) = vid_data(format)?;
+                let (codec, quality, url, bitrate) =
+                    vid_data(format, Some(vid_codec), Some(audio_codec))?;
 
-                if codec.starts_with(vid_codec) && (bitrate > bt_video || quality == resolution) {
+                if quality > 0 && (bitrate > bt_video || quality == resolution) {
                     v_link = url;
                     v_codec = codec;
                     res = quality;
                     bt_video = bitrate;
-                } else if codec.starts_with(audio_codec) && bitrate > bt_audio {
+                } else if quality == 0 && bitrate > bt_audio {
                     a_link = url;
                     a_codec = codec;
                     bt_audio = bitrate;
+                }
+            }
+
+            if a_link.is_empty() {
+                for format in formats {
+                    let (codec, quality, url, bitrate) = vid_data(format, None, Some("mp4a"))?;
+                    if quality == 0 && bitrate > bt_audio {
+                        a_link = url;
+                        a_codec = codec;
+                        bt_audio = bitrate;
+                    }
+                }
+            }
+
+            if v_link.is_empty() {
+                for format in formats {
+                    let (codec, quality, url, bitrate) = vid_data(format, Some("avc"), None)?;
+
+                    if quality > 0 && (bitrate > bt_video || quality == resolution) {
+                        v_link = url;
+                        v_codec = codec;
+                        res = quality;
+                        bt_video = bitrate;
+                    }
                 }
             }
 
@@ -192,7 +221,7 @@ fn not_dash_link(data: &Value, resolution: u16, vid: &mut Vid) -> Result<(), Box
         let (mut v_codec, mut a_codec, mut v_link, mut res) = Default::default();
 
         for format in formats {
-            let (codec, quality, url, _) = vid_data(format)?;
+            let (codec, quality, url, _) = vid_data(format, None, None)?;
 
             if quality > res {
                 let (vid_codec, audio_codec) = codec
@@ -212,6 +241,7 @@ fn not_dash_link(data: &Value, resolution: u16, vid: &mut Vid) -> Result<(), Box
 
         if !v_link.is_empty() {
             vid.vid_link = v_link.into();
+            vid.audio_link = None;
             vid.vid_codec = Some(v_codec.into());
             vid.audio_codec = Some(a_codec.into());
             vid.resolution = Some(res);
@@ -221,7 +251,11 @@ fn not_dash_link(data: &Value, resolution: u16, vid: &mut Vid) -> Result<(), Box
     Ok(())
 }
 
-fn vid_data(format: &Value) -> Result<(&str, u16, &str, u64), Box<dyn Error>> {
+fn vid_data<'a>(
+    format: &'a Value,
+    vid_codec: Option<&'a str>,
+    audio_codec: Option<&'a str>,
+) -> Result<(&'a str, u16, &'a str, u64), Box<dyn Error>> {
     let codec = format["mimeType"]
         .as_str()
         .expect("Failed to get mimeType")
@@ -230,17 +264,16 @@ fn vid_data(format: &Value) -> Result<(&str, u16, &str, u64), Box<dyn Error>> {
         .1
         .trim_end_matches('"');
 
-    let mut default_audio = true; // for videos & audios which doesn't have audioTrack
+    let default_audio = codec.starts_with(audio_codec.unwrap_or("false lmao"))
+        && format["audioTrack"]
+            .as_object()
+            .and_then(|audio_track| audio_track["audioIsDefault"].as_bool())
+            .unwrap_or(true);
 
-    if codec.starts_with("mp4a") || codec == "opus" {
-        if let Some(audio_track) = format["audioTrack"].as_object() {
-            default_audio = audio_track["audioIsDefault"]
-                .as_bool()
-                .expect("Failed to get audioisDefault");
-        }
-    }
-
-    let (quality, url, bitrate) = if default_audio {
+    if default_audio
+        || codec.starts_with(vid_codec.unwrap_or("false lmao"))
+        || (vid_codec.is_none() && audio_codec.is_none())
+    {
         let quality = format["qualityLabel"]
             .as_str()
             .unwrap_or_default()
@@ -256,12 +289,12 @@ fn vid_data(format: &Value) -> Result<(&str, u16, &str, u64), Box<dyn Error>> {
             .as_u64()
             .expect("Failed to convert bitrate into a number");
 
-        (quality, url, bitrate)
-    } else {
-        (0, "", 0)
-    };
+        // println!("{codec}\t{bitrate}");
 
-    Ok((codec, quality, url, bitrate))
+        Ok((codec, quality, url, bitrate))
+    } else {
+        Ok(Default::default())
+    }
 }
 
 fn exit_if_empty<T>(formats: &[T]) {

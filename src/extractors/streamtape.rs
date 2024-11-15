@@ -5,15 +5,10 @@ use crate::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
-use url::Url;
 
 pub fn streamtape(url: &str, streaming_link: bool) -> Result<Vid, Box<dyn Error>> {
     let mut vid = Vid {
-        referrer: format!(
-            "https://streamtape.net{}",
-            Url::parse(&format!("https://{}", url))?.path()
-        )
-        .into(),
+        referrer: format!("https://streamtape.net/{}", url.split_once('/').unwrap().1).into(),
         ..Default::default()
     };
 
